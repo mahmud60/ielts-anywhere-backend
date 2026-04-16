@@ -1,0 +1,75 @@
+# =========================
+# 🔐 Secrets (VERY IMPORTANT)
+# =========================
+.env
+.env.*
+.firebase-service-account.json
+firebase-service-account.json
+alembic/
+/alembic
+
+# =========================
+# 🐍 Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# =========================
+# 📦 Virtual Environments
+# =========================
+venv/
+.venv/
+env/
+ENV/
+
+# =========================
+# 🧪 Testing & Coverage
+# =========================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# =========================
+# 🧠 Caches
+# =========================
+.cache/
+.mypy_cache/
+.ruff_cache/
+
+# =========================
+# 🗃️ Database
+# =========================
+db.sqlite3
+db.sqlite3-journal
+
+# =========================
+# 📁 Build / Distribution
+# =========================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =========================
+# 🧾 Logs
+# =========================
+*.log
+
+# =========================
+# 🧰 IDE / Editor
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# 📓 Jupyter
+# =========================
+.ipynb_checkpoints
+
+# =========================
+# 🚀 Deployment (optional)
+# =========================
+*.env.local
