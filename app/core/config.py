@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    APP_NAME: str = "IELTS PRO"
+    APP_NAME: str = "IELTS ANYWHERE"
     DEBUG: bool = False
 
     DATABASE_URL: str
@@ -9,7 +9,6 @@ class Settings(BaseSettings):
     REDIS_URL: str
 
     FIREBASE_SERVICE_ACCOUNT_PATH: str = 'firebase-service-account.json'
-    REDIS_URL: str = "redis://localhost:6379"   
 
     # LemonSqueezy
     LEMONSQUEEZY_API_KEY: str = ""
@@ -20,7 +19,7 @@ class Settings(BaseSettings):
     R2_ACCOUNT_ID: str = ""
     R2_ACCESS_KEY_ID: str = ""
     R2_SECRET_ACCESS_KEY: str = ""
-    R2_BUCKET_NAME: str = "ielts-audio"
+    R2_BUCKET_NAME: str = ""
     R2_PUBLIC_URL: str = ""   # e.g. https://pub-xxx.r2.dev
 
     # Time limits per module in seconds
