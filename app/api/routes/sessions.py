@@ -221,18 +221,6 @@ async def reset_module(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Resets the current module on a session so the student can retake it.
-    Called when time expires and the student chooses to restart.
-
-    What it does:
-    - Clears the module_started_at timestamp for the current module
-      so a fresh timer begins when the module loads again
-    - Does NOT clear any existing attempt — if the student had
-      partially answered questions those are in a separate TestAttempt
-      row which is just abandoned (not linked to the session)
-    - Does NOT advance the session — same module stays current
-    """
     session = (await db.execute(
         select(TestSession).where(
             TestSession.id == session_id,
@@ -246,7 +234,7 @@ async def reset_module(
     if current_mod == "complete":
         return _to_out(session)
 
-    # Clear the start timestamp for this module so the timer resets
+    # Clear start timestamp so timer resets on next startModule call
     started = dict(session.module_started_at or {})
     if current_mod in started:
         del started[current_mod]
@@ -255,6 +243,87 @@ async def reset_module(
 
     return _to_out(session)
 
+@router.get("/{session_id}/last-scores")
+async def get_last_scores(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns the band scores from the most recent completed attempt
+    for each module in this session's IELTS test.
+    Used on the time-expired screen to show the student their last score.
+    """
+    session = (await db.execute(
+        select(TestSession).where(
+            TestSession.id == session_id,
+            TestSession.user_id == current_user.id,
+        )
+    )).scalar_one_or_none()
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    scores = {}
+    tips   = {}
+
+    for module in ["listening", "reading", "writing", "speaking"]:
+        attempt_id = getattr(session, f"{module}_attempt_id")
+        if attempt_id:
+            attempt = (await db.execute(
+                select(TestAttempt).where(TestAttempt.id == attempt_id)
+            )).scalar_one_or_none()
+            if attempt and attempt.overall_band:
+                scores[module] = attempt.overall_band
+                tips[module]   = attempt.improvement_tips or []
+
+    # Also check module_bands cache for any bands already stored
+    cached = session.module_bands or {}
+    for module, band in cached.items():
+        if band and module not in scores:
+            scores[module] = band
+
+    return {"scores": scores, "tips": tips}
+
+
+@router.post("/{session_id}/restart", response_model=TestSessionOut)
+async def restart_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Resets the entire session back to the beginning.
+    Clears all module attempt links, all cached bands,
+    and all timer start timestamps.
+    The session row is reused — a new one is NOT created.
+    This means the student keeps the same URL.
+    """
+    session = (await db.execute(
+        select(TestSession).where(
+            TestSession.id == session_id,
+            TestSession.user_id == current_user.id,
+        )
+    )).scalar_one_or_none()
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    # Clear all module links and timer records
+    session.listening_attempt_id = None
+    session.reading_attempt_id   = None
+    session.writing_attempt_id   = None
+    session.speaking_attempt_id  = None
+    session.module_bands         = {
+        "listening": None,
+        "reading":   None,
+        "writing":   None,
+        "speaking":  None,
+    }
+    session.module_started_at = {}
+    session.status            = SessionStatus.in_progress
+    session.completed_at      = None
+
+    await db.flush()
+    return _to_out(session)
 
 @router.post("/{session_id}/complete-module", response_model=TestSessionOut)
 async def complete_module(
