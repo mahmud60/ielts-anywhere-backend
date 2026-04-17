@@ -215,6 +215,46 @@ async def get_session(
         raise HTTPException(404, "Session not found")
     return _to_out(session)
 
+@router.post("/{session_id}/reset-module", response_model=TestSessionOut)
+async def reset_module(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Resets the current module on a session so the student can retake it.
+    Called when time expires and the student chooses to restart.
+
+    What it does:
+    - Clears the module_started_at timestamp for the current module
+      so a fresh timer begins when the module loads again
+    - Does NOT clear any existing attempt — if the student had
+      partially answered questions those are in a separate TestAttempt
+      row which is just abandoned (not linked to the session)
+    - Does NOT advance the session — same module stays current
+    """
+    session = (await db.execute(
+        select(TestSession).where(
+            TestSession.id == session_id,
+            TestSession.user_id == current_user.id,
+        )
+    )).scalar_one_or_none()
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    current_mod = _current_module(session)
+    if current_mod == "complete":
+        return _to_out(session)
+
+    # Clear the start timestamp for this module so the timer resets
+    started = dict(session.module_started_at or {})
+    if current_mod in started:
+        del started[current_mod]
+        session.module_started_at = started
+        await db.flush()
+
+    return _to_out(session)
+
 
 @router.post("/{session_id}/complete-module", response_model=TestSessionOut)
 async def complete_module(
