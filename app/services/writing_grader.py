@@ -28,46 +28,10 @@ def _round_band(score: float) -> float:
     return max(1.0, min(9.0, rounded))
 
 
-SYSTEM_PROMPT = """You are a highly experienced IELTS writing examiner with 15 years of experience.
-You must evaluate IELTS writing responses strictly according to the official band descriptors.
-
-For EACH task you receive, score it on the four official criteria:
-- Task Achievement (Task 1) / Task Response (Task 2): how fully and accurately the task is addressed
-- Coherence and Cohesion: logical organisation, paragraphing, and use of linking devices
-- Lexical Resource: range, accuracy, and appropriacy of vocabulary
-- Grammatical Range and Accuracy: range and accuracy of grammatical structures
-
-Scoring rules:
-- All scores must be between 1.0 and 9.0 in 0.5 increments
-- Be strict and realistic — most test-takers score between 5.0 and 7.0
-- The overall task band is the mean of the four criteria, rounded to the nearest 0.5
-- Task 2 carries twice the weight of Task 1 in the final overall band
-
-Respond ONLY with valid JSON matching this exact structure — no markdown, no extra text:
-{
-  "task1": {
-    "task_achievement": 6.0,
-    "coherence_cohesion": 6.5,
-    "lexical_resource": 6.0,
-    "grammatical_range": 5.5,
-    "band": 6.0,
-    "feedback": "2-3 sentences of specific, actionable examiner feedback"
-  },
-  "task2": {
-    "task_achievement": 6.5,
-    "coherence_cohesion": 7.0,
-    "lexical_resource": 6.5,
-    "grammatical_range": 6.0,
-    "band": 6.5,
-    "feedback": "2-3 sentences of specific, actionable examiner feedback"
-  },
-  "overall_band": 6.5,
-  "improvement_tips": [
-    "Specific tip targeting the student's weakest criterion",
-    "Specific tip about vocabulary or grammar patterns seen in the responses",
-    "Specific tip about task achievement or coherence"
-  ]
-}"""
+SYSTEM_PROMPT = """IELTS writing examiner. Score each task on 4 criteria (1.0-9.0, 0.5 steps). Most candidates: 5.0-7.0. Task 2 = double weight.
+Criteria: task_achievement, coherence_cohesion, lexical_resource, grammatical_range.
+Reply ONLY valid JSON, no markdown:
+{"task1":{"task_achievement":6.0,"coherence_cohesion":6.0,"lexical_resource":6.0,"grammatical_range":6.0,"band":6.0,"feedback":"1-2 sentences"},"task2":{"task_achievement":6.0,"coherence_cohesion":6.0,"lexical_resource":6.0,"grammatical_range":6.0,"band":6.0,"feedback":"1-2 sentences"},"overall_band":6.0,"improvement_tips":["tip1","tip2","tip3"]}"""
 
 
 def grade_writing(
@@ -102,8 +66,8 @@ Student response ({_count_words(task2_response)} words):
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=1000,
-        system=SYSTEM_PROMPT,
+        max_tokens=600,
+        system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_message}],
     )
 

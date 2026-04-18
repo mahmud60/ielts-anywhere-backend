@@ -87,44 +87,13 @@ async def get_vocabulary_exercises(
         else "Focus on sophisticated synonyms, idiomatic academic phrases, and precise collocations."
     )
 
-    prompt = f"""
-The student's current IELTS lexical resource band is approximately {lex_score:.1f} ({level}).
-{focus_hint}
-
-Generate a set of IELTS vocabulary exercises. Respond ONLY with valid JSON — no markdown:
-
-{{
-  "focus_areas": ["short description of 2-3 vocab areas being targeted"],
-  "exercises": [
-    {{
-      "word": "proliferate",
-      "part_of_speech": "verb",
-      "definition": "to increase rapidly in numbers or amount",
-      "ielts_topics": ["technology", "environment"],
-      "example_sentence": "Smartphones have proliferated in developing nations.",
-      "gap_fill": "Social media platforms have _____ at an astonishing rate.",
-      "gap_fill_answer": "proliferated",
-      "collocations": ["rapidly proliferate", "continue to proliferate"],
-      "usage_tip": "Often used in academic writing; pairs well with 'rapidly' or 'dramatically'."
-    }}
-  ],
-  "phrases": [
-    {{
-      "phrase": "a growing body of evidence",
-      "meaning": "an increasing amount of research/proof",
-      "example": "A growing body of evidence suggests that diet affects mental health.",
-      "register": "academic writing"
-    }}
-  ],
-  "study_tip": "One actionable tip for improving lexical resource in IELTS Writing/Speaking."
-}}
-
-Generate exactly 6 exercises and 4 phrases. Make them genuinely useful for IELTS band improvement.
-"""
+    prompt = f"""IELTS vocab exercises for lexical_resource band {lex_score:.1f} ({level}). {focus_hint}
+Reply ONLY valid JSON, no markdown. Generate 4 exercises and 3 phrases:
+{{"focus_areas":["area1","area2"],"exercises":[{{"word":"...","part_of_speech":"...","definition":"...","ielts_topics":["..."],"example_sentence":"...","gap_fill":"sentence with _____","gap_fill_answer":"...","collocations":["..."],"usage_tip":"..."}}],"phrases":[{{"phrase":"...","meaning":"...","example":"...","register":"..."}}],"study_tip":"..."}}"""
 
     response = _client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=2000,
+        max_tokens=1000,
         messages=[{"role": "user", "content": prompt}],
     )
     return json.loads(_clean_json(response.content[0].text))
@@ -154,43 +123,13 @@ async def get_grammar_exercises(
              "and sophisticated use of modal verbs."
     )
 
-    prompt = f"""
-The student's current IELTS grammatical range and accuracy band is approximately {gram_score:.1f} ({level}).
-{focus_hint}
-
-Generate a set of IELTS grammar exercises. Respond ONLY with valid JSON — no markdown:
-
-{{
-  "focus_areas": ["2-3 grammar structures being targeted"],
-  "exercises": [
-    {{
-      "structure": "Mixed conditional",
-      "explanation": "Combines past unreal condition with present result: If + past perfect ... would + base verb.",
-      "example": "If she had studied harder, she would be at university now.",
-      "transform_task": "Rewrite as a mixed conditional: She didn't practise. She can't speak fluently now.",
-      "model_answer": "If she had practised more, she would be able to speak fluently now.",
-      "common_error": "Using 'would have' in the result clause instead of 'would'.",
-      "ielts_tip": "Mixed conditionals show sophisticated grammatical range — examiners reward them in Writing Task 2."
-    }}
-  ],
-  "patterns": [
-    {{
-      "name": "Passive voice for academic objectivity",
-      "when_to_use": "When the actor is unknown, unimportant, or to vary sentence structure.",
-      "active_example": "Researchers have conducted many studies on this topic.",
-      "passive_example": "Many studies have been conducted on this topic.",
-      "ielts_tip": "Using passive appropriately in Task 1 reports signals C1 grammatical control."
-    }}
-  ],
-  "study_tip": "One actionable tip for improving grammatical range in IELTS."
-}}
-
-Generate exactly 5 exercises and 3 patterns tailored to this student's level.
-"""
+    prompt = f"""IELTS grammar exercises for grammatical_range band {gram_score:.1f} ({level}). {focus_hint}
+Reply ONLY valid JSON, no markdown. Generate 4 exercises and 2 patterns:
+{{"focus_areas":["area1","area2"],"exercises":[{{"structure":"...","explanation":"...","example":"...","transform_task":"...","model_answer":"...","common_error":"...","ielts_tip":"..."}}],"patterns":[{{"name":"...","when_to_use":"...","active_example":"...","passive_example":"...","ielts_tip":"..."}}],"study_tip":"..."}}"""
 
     response = _client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=2000,
+        max_tokens=1000,
         messages=[{"role": "user", "content": prompt}],
     )
     return json.loads(_clean_json(response.content[0].text))

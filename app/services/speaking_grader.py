@@ -33,60 +33,11 @@ def _format_transcript(part_responses: list[dict]) -> str:
     return "\n".join(lines)
 
 
-SYSTEM_PROMPT = """You are a highly experienced IELTS speaking examiner.
-Evaluate the candidate's spoken responses against the official IELTS band descriptors.
-
-The four official IELTS speaking criteria are:
-- Fluency and Coherence: how naturally and logically the candidate speaks
-- Lexical Resource: range, accuracy, and appropriateness of vocabulary
-- Grammatical Range and Accuracy: range and accuracy of grammatical structures
-- Pronunciation: clarity and intelligibility (estimate from text patterns — repetition, fillers, sentence structure variety)
-
-Important context:
-- You are evaluating TYPED responses that represent what the candidate would say
-- For pronunciation, estimate based on: sentence variety, use of hedging language, natural discourse markers
-- Part 1 answers should be 2-3 sentences (brief but natural)
-- Part 2 should be a 1-2 minute monologue (well-developed, 150-250 words)
-- Part 3 answers should be 4-6 sentences with supporting reasoning
-- Penalise very short answers or responses that ignore the question
-- Be realistic — most candidates score between 5.0 and 7.0
-
-Respond ONLY with valid JSON matching this exact structure — no markdown, no extra text:
-{
-  "part1": {
-    "fluency_coherence": 6.5,
-    "lexical_resource": 6.0,
-    "grammatical_range": 6.0,
-    "pronunciation": 6.5,
-    "band": 6.5,
-    "feedback": "2-3 sentences of specific examiner feedback on Part 1",
-    "examiner_notes": "One specific observation about vocabulary or grammar"
-  },
-  "part2": {
-    "fluency_coherence": 7.0,
-    "lexical_resource": 6.5,
-    "grammatical_range": 6.5,
-    "pronunciation": 6.5,
-    "band": 6.5,
-    "feedback": "2-3 sentences of specific examiner feedback on Part 2",
-    "examiner_notes": "One specific observation about discourse development"
-  },
-  "part3": {
-    "fluency_coherence": 6.5,
-    "lexical_resource": 7.0,
-    "grammatical_range": 6.5,
-    "pronunciation": 6.5,
-    "band": 6.5,
-    "feedback": "2-3 sentences of specific examiner feedback on Part 3",
-    "examiner_notes": "One specific observation about argumentation"
-  },
-  "overall_band": 6.5,
-  "improvement_tips": [
-    "Specific tip about the candidate's weakest criterion across all parts",
-    "Specific tip about a vocabulary or grammar pattern seen in responses",
-    "Specific tip about developing answers more fully in a specific part"
-  ]
-}"""
+SYSTEM_PROMPT = """IELTS speaking examiner. Score 3 parts on 4 criteria (1.0-9.0, 0.5 steps). Most candidates: 5.0-7.0.
+Criteria: fluency_coherence, lexical_resource, grammatical_range, pronunciation (estimate from text patterns).
+Penalise very short or off-topic answers.
+Reply ONLY valid JSON, no markdown:
+{"part1":{"fluency_coherence":6.0,"lexical_resource":6.0,"grammatical_range":6.0,"pronunciation":6.0,"band":6.0,"feedback":"1-2 sentences"},"part2":{"fluency_coherence":6.0,"lexical_resource":6.0,"grammatical_range":6.0,"pronunciation":6.0,"band":6.0,"feedback":"1-2 sentences"},"part3":{"fluency_coherence":6.0,"lexical_resource":6.0,"grammatical_range":6.0,"pronunciation":6.0,"band":6.0,"feedback":"1-2 sentences"},"overall_band":6.0,"improvement_tips":["tip1","tip2","tip3"]}"""
 
 
 def grade_speaking(part_responses: list[dict]) -> dict:
@@ -114,8 +65,8 @@ def grade_speaking(part_responses: list[dict]) -> dict:
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=1200,
-        system=SYSTEM_PROMPT,
+        max_tokens=700,
+        system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_message}],
     )
 
