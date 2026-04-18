@@ -2,7 +2,7 @@
 builder = "dockerfile"
 
 [deploy]
-startCommand = "sh -c 'uvicorn app.main:app --host 0.0.0.0 --port $PORT'"
+startCommand = "celery -A app.tasks.grading.celery_app worker --loglevel=info"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
