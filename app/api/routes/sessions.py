@@ -285,6 +285,37 @@ async def get_last_scores(
     return {"scores": scores, "tips": tips}
 
 
+@router.get("/tests/{test_id}/last-result")
+async def get_test_last_result(
+    test_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns overall_band and module_bands from the user's most recently
+    completed session for this IELTS test. Used on the test-selection screen.
+    """
+    session = (await db.execute(
+        select(TestSession)
+        .where(
+            TestSession.user_id == current_user.id,
+            TestSession.ielts_test_id == test_id,
+            TestSession.status == SessionStatus.completed,
+        )
+        .order_by(TestSession.completed_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    if not session:
+        return {"overall_band": None, "module_bands": {}}
+
+    bands = session.module_bands or {}
+    done = [v for v in bands.values() if v is not None]
+    overall = round(sum(done) / len(done) * 2) / 2 if done else None
+
+    return {"overall_band": overall, "module_bands": bands}
+
+
 @router.post("/{session_id}/restart", response_model=TestSessionOut)
 async def restart_session(
     session_id: str,
