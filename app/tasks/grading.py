@@ -112,7 +112,7 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
         attempt.improvement_tips = result["improvement_tips"]
         db.commit()
 
-        _notify_module_graded(db, attempt)
+        _notify_module_graded(attempt_id)
 
     except Exception as exc:
         try:
@@ -180,7 +180,7 @@ def grade_speaking_task(self, attempt_id: str, part_responses: list):
         attempt.improvement_tips = result["improvement_tips"]
         db.commit()
 
-        _notify_module_graded(db, attempt)
+        _notify_module_graded(attempt_id)
 
     except Exception as exc:
         try:
@@ -196,13 +196,16 @@ def grade_speaking_task(self, attempt_id: str, part_responses: list):
         db.close()
 
 
-def _notify_module_graded(db, attempt) -> None:
+def _notify_module_graded(attempt_id: str) -> None:
     """
     After an async module finishes grading, check if its parent session
     is now fully complete and send a results email if so.
+    Uses a fresh DB session so it cannot affect the caller's session state.
     """
+    db = _get_db_session()
     try:
         from app.models.user import User
+        from app.models.test import TestAttempt
         from app.models.ielts_test import TestSession, SessionStatus
         from app.services.email import send_email_sync, build_test_complete_email
         from sqlalchemy import text
@@ -213,7 +216,7 @@ def _notify_module_graded(db, attempt) -> None:
                 "(listening_attempt_id = :aid OR reading_attempt_id = :aid OR "
                 " writing_attempt_id = :aid OR speaking_attempt_id = :aid) LIMIT 1"
             ),
-            {"aid": str(attempt.id)},
+            {"aid": attempt_id},
         ).mappings().first()
 
         if not session or session["status"] != "completed":
@@ -236,3 +239,5 @@ def _notify_module_graded(db, attempt) -> None:
         send_email_sync(user.email, subject, html)
     except Exception:
         pass
+    finally:
+        db.close()
