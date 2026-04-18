@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+import httpx
 
 from app.db.session import get_db
 from app.models.user import User
@@ -14,6 +15,7 @@ from app.schemas.speaking import (
 )
 from app.api.routes.auth import get_current_user
 from app.tasks.grading import grade_speaking_task
+from app.core.config import settings
 
 router = APIRouter(prefix="/speaking", tags=["speaking"])
 
@@ -190,6 +192,37 @@ async def get_attempt(
         improvement_tips=attempt.improvement_tips,
         transcript=transcript,
     )
+
+
+@router.post("/transcribe")
+async def transcribe_audio(
+    audio: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Accepts a WebM/OGG audio blob from the browser MediaRecorder,
+    forwards it to OpenAI Whisper, and returns the transcript text.
+    Falls back to an empty string if OPENAI_API_KEY is not configured.
+    """
+    if not settings.OPENAI_API_KEY:
+        return {"transcript": ""}
+
+    content = await audio.read()
+    filename = audio.filename or "recording.webm"
+    mime = audio.content_type or "audio/webm"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        res = await client.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+            files={"file": (filename, content, mime)},
+            data={"model": "whisper-1"},
+        )
+
+    if not res.is_success:
+        raise HTTPException(502, f"Whisper error: {res.text}")
+
+    return {"transcript": res.json().get("text", "")}
 
 
 @router.get("/attempts")

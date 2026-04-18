@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = ""
     R2_PUBLIC_URL: str = ""   # e.g. https://pub-xxx.r2.dev
 
+    # OpenAI (Whisper transcription)
+    OPENAI_API_KEY: str = ""
+
+    # Email (Resend — https://resend.com)
+    RESEND_API_KEY: str = ""
+    FROM_EMAIL: str = "noreply@ieltsanywhere.app"
+
     # Time limits per module in seconds
     # Real IELTS: Listening 30min, Reading 60min, Writing 60min, Speaking 15min
     LISTENING_TIME_LIMIT: int = 1800   # 30 minutes

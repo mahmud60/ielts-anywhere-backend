@@ -112,8 +112,9 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
         attempt.improvement_tips = result["improvement_tips"]
         db.commit()
 
+        _notify_module_graded(db, attempt)
+
     except Exception as exc:
-        # Mark as failed then retry
         try:
             attempt = db.get(TestAttempt, attempt_id)
             if attempt:
@@ -179,6 +180,8 @@ def grade_speaking_task(self, attempt_id: str, part_responses: list):
         attempt.improvement_tips = result["improvement_tips"]
         db.commit()
 
+        _notify_module_graded(db, attempt)
+
     except Exception as exc:
         try:
             attempt = db.get(TestAttempt, attempt_id)
@@ -191,3 +194,45 @@ def grade_speaking_task(self, attempt_id: str, part_responses: list):
         raise self.retry(exc=exc)
     finally:
         db.close()
+
+
+def _notify_module_graded(db, attempt) -> None:
+    """
+    After an async module finishes grading, check if its parent session
+    is now fully complete and send a results email if so.
+    """
+    try:
+        from app.models.user import User
+        from app.models.ielts_test import TestSession, SessionStatus
+        from app.services.email import send_email_sync, build_test_complete_email
+        from sqlalchemy import text
+
+        session = db.execute(
+            text(
+                "SELECT * FROM test_sessions WHERE "
+                "(listening_attempt_id = :aid OR reading_attempt_id = :aid OR "
+                " writing_attempt_id = :aid OR speaking_attempt_id = :aid) LIMIT 1"
+            ),
+            {"aid": str(attempt.id)},
+        ).mappings().first()
+
+        if not session or session["status"] != "completed":
+            return
+
+        user = db.get(User, session["user_id"])
+        if not user or not user.email:
+            return
+
+        bands = session["module_bands"] or {}
+        done = [v for v in bands.values() if v is not None]
+        overall = round(sum(done) / len(done) * 2) / 2 if done else None
+
+        subject, html = build_test_complete_email(
+            user_name=user.full_name or "",
+            overall_band=overall,
+            module_bands=bands,
+            session_id=str(session["id"]),
+        )
+        send_email_sync(user.email, subject, html)
+    except Exception:
+        pass

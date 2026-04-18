@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.db.session import get_db
 from app.models.user import User, SubscriptionTier
-from app.models.test import TestAttempt
+from app.models.test import TestAttempt, ModuleType, GradingStatus
 from app.models.ielts_test import IeltsTest, TestSession, SessionStatus
 from app.api.routes.auth import get_current_user
 
@@ -13,6 +13,15 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 _VOCAB_KEYWORDS = ("vocab", "lexical", "word", "colloca", "phrasal", "idiom", "terminolog")
 _MODULES = ("listening", "reading", "writing", "speaking")
 
+_CRITERIA_LABELS = {
+    "task_achievement": "Task Achievement",
+    "coherence_cohesion": "Coherence & Cohesion",
+    "lexical_resource": "Lexical Resource",
+    "grammatical_range": "Grammatical Range",
+    "fluency_coherence": "Fluency & Coherence",
+    "pronunciation": "Pronunciation",
+}
+
 
 def _session_overall(session: TestSession) -> float | None:
     bands = session.module_bands or {}
@@ -20,11 +29,30 @@ def _session_overall(session: TestSession) -> float | None:
     return round(sum(done) / len(done) * 2) / 2 if done else None
 
 
+def _agg_subscores(attempts: list[TestAttempt]) -> dict:
+    """
+    Aggregate criteria scores across all attempts that have subscores.
+    Returns { criterion_key: avg_score }.
+    """
+    buckets: dict[str, list[float]] = {}
+    for a in attempts:
+        if not a.subscores:
+            continue
+        for part_data in a.subscores.values():
+            if not isinstance(part_data, dict):
+                continue
+            for key, val in part_data.items():
+                if isinstance(val, (int, float)) and key not in ("band", "word_count", "part_number"):
+                    buckets.setdefault(key, []).append(float(val))
+    return {k: round(sum(v) / len(v) * 2) / 2 for k, v in buckets.items() if v}
+
+
 @router.get("")
 async def get_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # All completed sessions, newest first (cap at 20 for history chart)
     sessions = (await db.execute(
         select(TestSession)
         .where(
@@ -40,7 +68,7 @@ async def get_dashboard(
     best_overall = max(overalls) if overalls else None
     avg_overall = round(sum(overalls) / len(overalls) * 2) / 2 if overalls else None
 
-    # Fetch test titles for recent sessions
+    # Enrich recent 5 sessions with test title
     recent_sessions = []
     for s in sessions[:5]:
         ielts_test = (await db.execute(
@@ -55,20 +83,32 @@ async def get_dashboard(
             "module_bands": bands,
         })
 
+    # Lightweight history for the progress chart (all 20)
+    score_history = [
+        {
+            "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+            "overall_band": _session_overall(s),
+            "module_bands": s.module_bands or {},
+        }
+        for s in reversed(sessions)   # oldest → newest for chart rendering
+        if _session_overall(s) is not None
+    ]
+
     data = {
         "is_pro": current_user.subscription == SubscriptionTier.pro,
         "total_tests": total_tests,
         "best_overall": best_overall,
         "avg_overall": avg_overall,
         "recent_sessions": recent_sessions,
+        "score_history": score_history,
     }
 
     if current_user.subscription != SubscriptionTier.pro:
         return data
 
-    # --- Pro-only analytics ---
+    # ── Pro-only analytics ────────────────────────────────────────────────────
 
-    # Per-module averages across all completed sessions
+    # Module-level averages from session history
     module_avgs = {}
     for mod in _MODULES:
         scores = [
@@ -79,7 +119,6 @@ async def get_dashboard(
         if scores:
             module_avgs[mod] = round(sum(scores) / len(scores) * 2) / 2
 
-    # Modules ranked by score (weakest first)
     overall_avg = sum(module_avgs.values()) / len(module_avgs) if module_avgs else 0
     weak_modules = [
         {"module": mod, "avg_band": score}
@@ -87,7 +126,40 @@ async def get_dashboard(
         if score < overall_avg
     ]
 
-    # Aggregate tips from the 3 most recent completed sessions
+    # ── Criterion-level weakness detection ───────────────────────────────────
+    # Pull all completed writing + speaking attempts (richer subscores than L/R)
+    all_attempts = (await db.execute(
+        select(TestAttempt)
+        .where(
+            TestAttempt.user_id == current_user.id,
+            TestAttempt.module.in_([ModuleType.writing, ModuleType.speaking]),
+            TestAttempt.status == GradingStatus.complete,
+        )
+        .order_by(TestAttempt.created_at.desc())
+        .limit(20)
+    )).scalars().all()
+
+    # Per-module criterion averages
+    weakness_by_module: dict[str, dict] = {}
+    for mod in ("writing", "speaking"):
+        mod_attempts = [a for a in all_attempts if a.module.value == mod]
+        if not mod_attempts:
+            continue
+        agg = _agg_subscores(mod_attempts)
+        if not agg:
+            continue
+        sorted_criteria = sorted(agg.items(), key=lambda x: x[1])
+        weakness_by_module[mod] = {
+            "criteria_avgs": {
+                k: {"score": v, "label": _CRITERIA_LABELS.get(k, k)}
+                for k, v in agg.items()
+            },
+            "weakest_criterion": sorted_criteria[0][0] if sorted_criteria else None,
+            "weakest_label": _CRITERIA_LABELS.get(sorted_criteria[0][0], sorted_criteria[0][0]) if sorted_criteria else None,
+            "weakest_score": sorted_criteria[0][1] if sorted_criteria else None,
+        }
+
+    # Improvement tips from recent 3 sessions
     tips_by_module: dict[str, list[str]] = {m: [] for m in _MODULES}
     vocab_tips: list[str] = []
 
@@ -112,6 +184,7 @@ async def get_dashboard(
     data.update({
         "module_avgs": module_avgs,
         "weak_modules": weak_modules,
+        "weakness_by_module": weakness_by_module,
         "tips_by_module": tips_by_module,
         "vocab_tips": vocab_tips[:6],
     })
