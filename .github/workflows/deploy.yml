@@ -12,7 +12,7 @@ on:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: ${{ secrets.GCP_REGION }}
-  REGISTRY: asia-southeast1-docker.pkg.dev
+  REGISTRY: us-central1-a-docker.pkg.dev
 
 jobs:
 
