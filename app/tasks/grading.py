@@ -1,3 +1,4 @@
+import platform
 from celery import Celery
 from app.core.config import settings
 import ssl
@@ -8,9 +9,8 @@ celery_app = Celery(
     backend=settings.REDIS_URL,
 )
 
-# Windows requires solo pool — critical for Windows development
 celery_app.conf.update(
-    worker_pool="solo",
+    worker_pool="solo" if platform.system() == "Windows" else "prefork",
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
