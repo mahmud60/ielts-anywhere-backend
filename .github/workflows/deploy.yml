@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'ielts-anywhere-backend/**'
+      - '**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
@@ -53,7 +53,7 @@ jobs:
             -f ielts-anywhere-backend/Dockerfile.api \
             -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/ielts-images/fastapi:${{ steps.tag.outputs.tag }} \
             -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/ielts-images/fastapi:latest \
-            ielts-anywhere-backend/
+            .
 
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/ielts-images/fastapi:${{ steps.tag.outputs.tag }}
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/ielts-images/fastapi:latest
