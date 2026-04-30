@@ -96,7 +96,6 @@ jobs:
   deploy-celery:
     name: Deploy Celery to VM
     runs-on: ubuntu-latest
-    needs: migrate
 
     steps:
       - name: Deploy via SSH
