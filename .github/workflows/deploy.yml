@@ -123,30 +123,8 @@ jobs:
             --cpu=1 \
             --concurrency=80 \
             --timeout=60 \
-            --set-env-vars="\
-DATABASE_URL=${{ secrets.DATABASE_URL }},\
-ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},\
-REDIS_URL=${{ secrets.REDIS_URL }},\
-R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }},\
-R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }},\
-R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }},\
-R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }},\
-R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }},\
-FIREBASE_SERVICE_ACCOUNT_B64=${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }},\
-ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }},\
-LISTENING_TIME_LIMIT=1800,\
-READING_TIME_LIMIT=3600,\
-WRITING_TIME_LIMIT=3600,\
-SPEAKING_TIME_LIMIT=900,\
-DEBUG=False" \
+            --set-env-vars=DATABASE_URL=${{ secrets.DATABASE_URL }},ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},REDIS_URL=${{ secrets.REDIS_URL }},R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }},R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }},R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }},R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }},R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }},FIREBASE_SERVICE_ACCOUNT_B64=${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }},ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }},LISTENING_TIME_LIMIT=1800,READING_TIME_LIMIT=3600,WRITING_TIME_LIMIT=3600,SPEAKING_TIME_LIMIT=900,DEBUG=False \
             --quiet
-
-      - name: Print FastAPI URL
-        run: |
-          echo "FastAPI URL:"
-          gcloud run services describe fastapi \
-            --region=${{ env.REGION }} \
-            --format="value(status.url)"
 
   # ── 4. Deploy Celery to VM via SSH ──────────────────────────────────────────
   deploy-celery:
