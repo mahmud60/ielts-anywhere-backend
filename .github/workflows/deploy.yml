@@ -118,4 +118,11 @@ jobs:
             git pull origin main
             source venv/bin/activate
             pip install -r requirements.txt --quiet
-            sudo s
+            kill $(cat /tmp/celery.pid) 2>/dev/null || true
+            nohup celery -A app.tasks.grading.celery_app worker \
+              --loglevel=info \
+              --concurrency=2 \
+              --pidfile=/tmp/celery.pid \
+              > /tmp/celery.log 2>&1 &
+            sleep 3
+            celery -A app.tasks.grading.celery_app inspect ping 2>/dev/null && echo "Celery deployed successfully" || echo "Celery may still be starting"
