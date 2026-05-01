@@ -114,7 +114,7 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             set -e
-            cd ~/ielts-anywhere-backend
+            cd /home/MAHMUD/ielts-anywhere-backend
             git pull origin main
             source venv/bin/activate
             pip install -r requirements.txt --quiet
