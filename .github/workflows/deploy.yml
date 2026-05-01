@@ -50,7 +50,7 @@ jobs:
       - name: Build and push FastAPI image
         run: |
           docker build \
-            -f Dockerfile.api \
+            -f Dockerfile \
             -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/ielts-images/fastapi:${{ steps.tag.outputs.tag }} \
             -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/ielts-images/fastapi:latest \
             .
