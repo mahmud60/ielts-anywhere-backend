@@ -224,6 +224,37 @@ async def update_listening_test(
     return {"id": str(test.id), "title": test.title, "is_active": test.is_active}
 
 
+# ── Section management ───────────────────────────────────────────────────────
+
+@router.post("/listening/tests/{test_id}/sections")
+async def create_listening_section(
+    test_id: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    test = (await db.execute(
+        select(ListeningTest).where(ListeningTest.id == test_id)
+    )).scalar_one_or_none()
+    if not test:
+        raise HTTPException(404, "Test not found")
+
+    section = ListeningSection(
+        test_id=test_id,
+        section_number=body.get("section_number", 1),
+        title=body.get("title", ""),
+    )
+    db.add(section)
+    await db.flush()
+    return {
+        "id": str(section.id),
+        "section_number": section.section_number,
+        "title": section.title,
+        "audio_url": section.audio_url,
+        "question_count": 0,
+    }
+
+
 # ── Audio upload ──────────────────────────────────────────────────────────────
 
 @router.post("/listening/sections/{section_id}/audio")
