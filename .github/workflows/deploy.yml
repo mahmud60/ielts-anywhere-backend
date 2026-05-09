@@ -117,7 +117,7 @@ jobs:
             cd /home/MAHMUD/ielts-anywhere-backend
             git pull origin main
             source venv/bin/activate
-            pip install -r requirements.txt --quiet
+            pip install -r requirements.txt --quiet --no-cache-dir
             kill $(cat /tmp/celery.pid) 2>/dev/null || true
             nohup celery -A app.tasks.grading.celery_app worker \
               --loglevel=info \
