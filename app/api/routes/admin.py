@@ -9,7 +9,7 @@ from app.models.ielts_test import IeltsTest, TestSession
 from app.db.session import get_db
 from app.models.user import User, SubscriptionTier
 from app.models.listening import (
-    ListeningTest, ListeningSection, ListeningQuestion, QuestionType
+    ListeningTest, ListeningSection, ListeningSubsection, ListeningQuestion,
 )
 from app.models.reading import (
     ReadingTest, ReadingPassage,
@@ -157,7 +157,8 @@ async def list_listening_tests(
         select(ListeningTest)
         .options(
             selectinload(ListeningTest.sections)
-            .selectinload(ListeningSection.questions)  # ✅ add this
+            .selectinload(ListeningSection.subsections)
+            .selectinload(ListeningSubsection.questions)
         )
         .order_by(ListeningTest.created_at.desc())
     )
@@ -167,14 +168,13 @@ async def list_listening_tests(
             "id": str(t.id),
             "title": t.title,
             "is_active": t.is_active,
-            "is_demo": t.is_demo,
             "sections": [
                 {
-                    "id": str(s.id),
-                    "section_number": s.section_number,
+                    "id": s.id,
+                    "part": s.part,
                     "title": s.title,
-                    "audio_url": s.audio_url,
-                    "question_count": len(s.questions) if s.questions else 0,
+                    "audio": s.audio,
+                    "question_count": sum(len(sub.questions) for sub in s.subsections),
                 }
                 for s in t.sections
             ],
@@ -189,11 +189,15 @@ async def create_listening_test(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """Creates a new listening test (empty — add sections separately)."""
     test = ListeningTest(
         title=body["title"],
+        description=body.get("description"),
+        task=body.get("task", "ielts_listening"),
+        type=body.get("type", "text"),
+        order=body.get("order", 1),
         is_active=body.get("is_active", False),
-        is_demo=body.get("is_demo", False),
+        is_recommended=body.get("is_recommended", False),
+        mock_test_order=body.get("mock_test_order"),
     )
     db.add(test)
     await db.flush()
@@ -213,12 +217,10 @@ async def update_listening_test(
     if not test:
         raise HTTPException(404, "Test not found")
 
-    if "title" in body:
-        test.title = body["title"]
-    if "is_active" in body:
-        test.is_active = body["is_active"]
-    if "is_demo" in body:
-        test.is_demo = body["is_demo"]
+    for field in ["title", "description", "task", "type", "order",
+                  "is_active", "is_recommended", "mock_test_order"]:
+        if field in body:
+            setattr(test, field, body[field])
 
     await db.flush()
     return {"id": str(test.id), "title": test.title, "is_active": test.is_active}
@@ -241,33 +243,45 @@ async def create_listening_section(
 
     section = ListeningSection(
         test_id=test_id,
-        section_number=body.get("section_number", 1),
+        part=body.get("part", 1),
         title=body.get("title", ""),
+        audio=body.get("audio"),
     )
     db.add(section)
     await db.flush()
-    return {
-        "id": str(section.id),
-        "section_number": section.section_number,
-        "title": section.title,
-        "audio_url": section.audio_url,
-        "question_count": 0,
-    }
+    return {"id": section.id, "part": section.part, "title": section.title, "audio": section.audio}
+
+
+@router.patch("/listening/sections/{section_id}")
+async def update_listening_section(
+    section_id: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    section = (await db.execute(
+        select(ListeningSection).where(ListeningSection.id == section_id)
+    )).scalar_one_or_none()
+    if not section:
+        raise HTTPException(404, "Section not found")
+
+    for field in ["part", "title", "audio"]:
+        if field in body:
+            setattr(section, field, body[field])
+
+    await db.flush()
+    return {"id": section.id, "part": section.part, "title": section.title}
 
 
 # ── Audio upload ──────────────────────────────────────────────────────────────
 
 @router.post("/listening/sections/{section_id}/audio")
 async def upload_section_audio(
-    section_id: str,
+    section_id: int,
     audio: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """
-    Uploads an audio file to Cloudflare R2 and links it to the section.
-    Accepts mp3, wav, ogg, m4a.
-    """
     allowed = {"audio/mpeg", "audio/wav", "audio/ogg", "audio/mp4", "audio/x-m4a"}
     if audio.content_type not in allowed:
         raise HTTPException(400, f"Unsupported audio type: {audio.content_type}")
@@ -278,53 +292,51 @@ async def upload_section_audio(
     if not section:
         raise HTTPException(404, "Section not found")
 
-    # Delete old audio from R2 if replacing
-    if section.audio_url:
-        delete_audio(section.audio_url)
+    if section.audio:
+        delete_audio(section.audio)
 
     file_bytes = await audio.read()
-    if len(file_bytes) > 50 * 1024 * 1024:  # 50MB limit
+    if len(file_bytes) > 50 * 1024 * 1024:
         raise HTTPException(400, "Audio file too large (max 50MB)")
 
     url = upload_audio(file_bytes, audio.filename)
-    section.audio_url = url
+    section.audio = url
     await db.flush()
 
     return {"section_id": section_id, "audio_url": url}
 
 
-# ── Question management ───────────────────────────────────────────────────────
+# ── Subsection management ─────────────────────────────────────────────────────
 
-@router.get("/listening/sections/{section_id}/questions")
-async def list_questions(
-    section_id: str,
+@router.get("/listening/sections/{section_id}/subsections")
+async def list_subsections(
+    section_id: int,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
     result = await db.execute(
-        select(ListeningQuestion)
-        .where(ListeningQuestion.section_id == section_id)
-        .order_by(ListeningQuestion.order_index)
+        select(ListeningSubsection)
+        .where(ListeningSubsection.section_id == section_id)
+        .order_by(ListeningSubsection.order)
     )
-    questions = result.scalars().all()
     return [
         {
-            "id": str(q.id),
-            "order_index": q.order_index,
-            "question_type": q.question_type,
-            "question_text": q.question_text,
-            "options": q.options,
-            "matching_pool": q.matching_pool,
-            "answer_key": q.answer_key,
-            "wrong_answer_tip": q.wrong_answer_tip,
+            "id": sub.id,
+            "order": sub.order,
+            "title": sub.title,
+            "subsection_type": sub.subsection_type,
+            "text": sub.text,
+            "visual": sub.visual,
+            "grid_headers": sub.grid_headers,
+            "grid_cells": sub.grid_cells,
         }
-        for q in questions
+        for sub in result.scalars().all()
     ]
 
 
-@router.post("/listening/sections/{section_id}/questions")
-async def create_question(
-    section_id: str,
+@router.post("/listening/sections/{section_id}/subsections")
+async def create_subsection(
+    section_id: int,
     body: dict,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
@@ -335,30 +347,115 @@ async def create_question(
     if not section:
         raise HTTPException(404, "Section not found")
 
-    # Determine next order_index
     max_order = (await db.execute(
-        select(func.max(ListeningQuestion.order_index))
-        .where(ListeningQuestion.section_id == section_id)
+        select(func.max(ListeningSubsection.order))
+        .where(ListeningSubsection.section_id == section_id)
+    )).scalar() or 0
+
+    sub = ListeningSubsection(
+        section_id=section_id,
+        order=body.get("order", max_order + 1),
+        title=body.get("title"),
+        subsection_type=body.get("subsection_type", "regular"),
+        text=body.get("text"),
+        visual=body.get("visual"),
+        grid_headers=body.get("grid_headers"),
+        grid_cells=body.get("grid_cells"),
+    )
+    db.add(sub)
+    await db.flush()
+    return {"id": sub.id, "order": sub.order, "subsection_type": sub.subsection_type}
+
+
+@router.patch("/listening/subsections/{subsection_id}")
+async def update_subsection(
+    subsection_id: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    sub = (await db.execute(
+        select(ListeningSubsection).where(ListeningSubsection.id == subsection_id)
+    )).scalar_one_or_none()
+    if not sub:
+        raise HTTPException(404, "Subsection not found")
+
+    for field in ["order", "title", "subsection_type", "text", "visual", "grid_headers", "grid_cells"]:
+        if field in body:
+            setattr(sub, field, body[field])
+
+    await db.flush()
+    return {"id": sub.id}
+
+
+# ── Question management ───────────────────────────────────────────────────────
+
+@router.get("/listening/subsections/{subsection_id}/questions")
+async def list_questions(
+    subsection_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    result = await db.execute(
+        select(ListeningQuestion)
+        .where(ListeningQuestion.subsection_id == subsection_id)
+        .order_by(ListeningQuestion.order)
+    )
+    return [
+        {
+            "id": q.id,
+            "order": q.order,
+            "title": q.title,
+            "question_type": q.question_type,
+            "ielts_question_type": q.ielts_question_type,
+            "text": q.text,
+            "max_selected_options": q.max_selected_options,
+            "options": q.options,
+            "answer_key": q.answer_key,
+            "wrong_answer_tip": q.wrong_answer_tip,
+        }
+        for q in result.scalars().all()
+    ]
+
+
+@router.post("/listening/subsections/{subsection_id}/questions")
+async def create_question(
+    subsection_id: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    sub = (await db.execute(
+        select(ListeningSubsection).where(ListeningSubsection.id == subsection_id)
+    )).scalar_one_or_none()
+    if not sub:
+        raise HTTPException(404, "Subsection not found")
+
+    max_order = (await db.execute(
+        select(func.max(ListeningQuestion.order))
+        .where(ListeningQuestion.subsection_id == subsection_id)
     )).scalar() or 0
 
     question = ListeningQuestion(
-        section_id=section_id,
-        order_index=body.get("order_index", max_order + 1),
-        question_type=QuestionType(body["question_type"]),
-        question_text=body["question_text"],
-        options=body.get("options"),
-        matching_pool=body.get("matching_pool"),
+        subsection_id=subsection_id,
+        order=body.get("order", max_order + 1),
+        title=body.get("title"),
+        question_type=body["question_type"],
+        ielts_question_type=body.get("ielts_question_type"),
+        text=body["text"],
+        max_selected_options=body.get("max_selected_options"),
+        options=body.get("options", []),
         answer_key=body["answer_key"],
         wrong_answer_tip=body.get("wrong_answer_tip"),
     )
     db.add(question)
     await db.flush()
-    return {"id": str(question.id), "order_index": question.order_index}
+    return {"id": question.id, "order": question.order}
 
 
 @router.patch("/listening/questions/{question_id}")
 async def update_question(
-    question_id: str,
+    question_id: int,
     body: dict,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
@@ -369,18 +466,18 @@ async def update_question(
     if not question:
         raise HTTPException(404, "Question not found")
 
-    for field in ["question_text", "options", "matching_pool",
-                  "answer_key", "wrong_answer_tip", "order_index"]:
+    for field in ["order", "title", "question_type", "ielts_question_type",
+                  "text", "max_selected_options", "options", "answer_key", "wrong_answer_tip"]:
         if field in body:
             setattr(question, field, body[field])
 
     await db.flush()
-    return {"id": str(question.id)}
+    return {"id": question.id}
 
 
 @router.delete("/listening/questions/{question_id}")
 async def delete_question(
-    question_id: str,
+    question_id: int,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):

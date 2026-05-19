@@ -1,43 +1,34 @@
-import re
 from typing import Any
-from app.models.listening import ListeningQuestion, QuestionType
+from app.models.listening import ListeningQuestion
 
 
 def score_answer(question: ListeningQuestion, user_answer: Any) -> bool:
     qt = question.question_type
 
-    if qt == QuestionType.mcq or qt == QuestionType.tfng:
+    if qt == "multiple_choices" or qt == "dropdown":
+        # answer_key is the correct option order (int)
         try:
             return int(user_answer) == int(question.answer_key)
         except (TypeError, ValueError):
-            return False
+            return str(user_answer).lower().strip() == str(question.answer_key).lower().strip()
 
-    elif qt == QuestionType.fill:
+    elif qt == "fill_in_the_blank":
         if user_answer is None:
             return False
         user = str(user_answer).lower().strip()
         correct = str(question.answer_key).lower().strip()
         return user == correct
 
-    elif qt == QuestionType.matching:
-        # answer_key: {"0": "Student A", "1": "Supervisor", "2": "Student B"}
-        # user_answer: same structure
-        if not isinstance(user_answer, dict) or not isinstance(question.answer_key, dict):
+    elif qt == "multiple_select":
+        # answer_key: list of correct option orders; user_answer: list of selected orders
+        if not isinstance(user_answer, list) or not isinstance(question.answer_key, list):
             return False
-        for idx, correct_val in question.answer_key.items():
-            user_val = str(user_answer.get(str(idx), "")).lower().strip()
-            if user_val != str(correct_val).lower().strip():
-                return False
-        return True
+        return set(str(x) for x in user_answer) == set(str(x) for x in question.answer_key)
 
     return False
 
 
 def calculate_band(correct: int, total: int) -> float:
-    """
-    Scales to 40 questions then applies the official Cambridge
-    IELTS listening band conversion table.
-    """
     if total == 0:
         return 0.0
     scaled = (correct / total) * 40
@@ -58,19 +49,19 @@ def calculate_band(correct: int, total: int) -> float:
 
 def generate_tips(wrong_questions: list[ListeningQuestion]) -> list[str]:
     generic = {
-        QuestionType.mcq: (
-            "MCQ: read all options before the audio plays. "
+        "multiple_choices": (
+            "Multiple choice: read all options before the audio plays. "
             "The correct answer is usually a paraphrase — not word-for-word."
         ),
-        QuestionType.fill: (
+        "fill_in_the_blank": (
             "Fill-in-the-blank: listen for stressed words and proper nouns. "
             "They are often spelled out letter by letter in the recording."
         ),
-        QuestionType.tfng: (
-            "True/False/Not Given: 'Not Given' means no evidence in either "
-            "direction. Base your answer only on what the audio says."
+        "multiple_select": (
+            "Multiple select: eliminate wrong answers first. "
+            "Speakers sometimes mention something then correct themselves."
         ),
-        QuestionType.matching: (
+        "dropdown": (
             "Matching: listen for synonyms and paraphrases. "
             "Speakers rarely use the exact words from the question sheet."
         ),
@@ -81,7 +72,9 @@ def generate_tips(wrong_questions: list[ListeningQuestion]) -> list[str]:
         if q.wrong_answer_tip:
             tips.append(q.wrong_answer_tip)
         elif q.question_type not in seen:
-            tips.append(generic[q.question_type])
+            tip = generic.get(q.question_type)
+            if tip:
+                tips.append(tip)
             seen.add(q.question_type)
         if len(tips) >= 4:
             break

@@ -1,6 +1,6 @@
 from app.models.user import User
 from app.models.test import TestAttempt
-from app.models.listening import ListeningTest, ListeningSection, ListeningQuestion
+from app.models.listening import ListeningTest, ListeningSection, ListeningSubsection, ListeningQuestion
 from app.models.reading import (
     ReadingTest, ReadingPassage,
     ReadingQuestionGroup, ReadingQuestion
