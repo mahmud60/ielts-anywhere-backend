@@ -93,10 +93,13 @@ Reply ONLY valid JSON, no markdown. Generate 4 exercises and 3 phrases:
 
     response = await _client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=1000,
+        max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
-    return json.loads(_clean_json(response.content[0].text))
+    try:
+        return json.loads(_clean_json(response.content[0].text))
+    except json.JSONDecodeError as e:
+        raise HTTPException(502, f"AI returned invalid JSON: {e}")
 
 
 @router.post("/grammar")
@@ -129,7 +132,10 @@ Reply ONLY valid JSON, no markdown. Generate 4 exercises and 2 patterns:
 
     response = await _client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=1000,
+        max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
-    return json.loads(_clean_json(response.content[0].text))
+    try:
+        return json.loads(_clean_json(response.content[0].text))
+    except json.JSONDecodeError as e:
+        raise HTTPException(502, f"AI returned invalid JSON: {e}")
