@@ -70,6 +70,7 @@ class TestSession(Base):
     module_bands = Column(JSON, default=dict)
     module_started_at = Column(JSON, default=dict)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    last_activity_at = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="sessions")
     ielts_test = relationship("IeltsTest", back_populates="sessions")

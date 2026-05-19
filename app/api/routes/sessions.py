@@ -79,14 +79,18 @@ async def start_module(
         raise HTTPException(404, "Session not found")
 
     current_mod = _current_module(session)
+    now = datetime.now(timezone.utc)
+    session.last_activity_at = now
+
     if current_mod == "complete":
+        await db.flush()
         return _to_out(session)
 
     started = dict(session.module_started_at or {})
     if current_mod not in started:
-        started[current_mod] = datetime.now(timezone.utc).isoformat()
+        started[current_mod] = now.isoformat()
         session.module_started_at = started
-        await db.flush()
+    await db.flush()
 
     return _to_out(session)
 
@@ -213,6 +217,8 @@ async def get_session(
     )).scalar_one_or_none()
     if not session:
         raise HTTPException(404, "Session not found")
+    session.last_activity_at = datetime.now(timezone.utc)
+    await db.flush()
     return _to_out(session)
 
 @router.post("/{session_id}/reset-module", response_model=TestSessionOut)

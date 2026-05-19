@@ -1,11 +1,43 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.api.routes import auth, listening, reading, writing, speaking, sessions, admin, payments, dashboard, learn
+import asyncio
 import traceback
+from datetime import datetime, timezone, timedelta
 
-app = FastAPI(title=settings.APP_NAME, docs_url="/docs")
+
+async def _cleanup_expired_sessions():
+    """Delete in-progress sessions with no activity for 12+ hours. Runs every hour."""
+    from sqlalchemy import delete
+    from app.models.ielts_test import TestSession, SessionStatus
+    from app.db.session import AsyncSessionLocal
+    while True:
+        await asyncio.sleep(3600)
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=12)
+            async with AsyncSessionLocal() as db:
+                await db.execute(
+                    delete(TestSession).where(
+                        TestSession.status == SessionStatus.in_progress,
+                        TestSession.last_activity_at < cutoff,
+                    )
+                )
+                await db.commit()
+        except Exception:
+            print("Session cleanup error:", traceback.format_exc())
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_cleanup_expired_sessions())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title=settings.APP_NAME, docs_url="/docs", lifespan=lifespan)
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):

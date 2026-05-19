@@ -25,6 +25,7 @@ class ListeningTest(Base):
         "ListeningSection",
         back_populates="test",
         order_by="ListeningSection.part",
+        cascade="all, delete-orphan",
     )
 
 
@@ -42,6 +43,7 @@ class ListeningSection(Base):
         "ListeningSubsection",
         back_populates="section",
         order_by="ListeningSubsection.order",
+        cascade="all, delete-orphan",
     )
 
 
@@ -63,6 +65,7 @@ class ListeningSubsection(Base):
         "ListeningQuestion",
         back_populates="subsection",
         order_by="ListeningQuestion.order",
+        cascade="all, delete-orphan",
     )
 
 

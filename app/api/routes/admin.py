@@ -204,6 +204,21 @@ async def create_listening_test(
     return {"id": str(test.id), "title": test.title}
 
 
+@router.delete("/listening/tests/{test_id}", status_code=204)
+async def delete_listening_test(
+    test_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    test = (await db.execute(
+        select(ListeningTest).where(ListeningTest.id == test_id)
+    )).scalar_one_or_none()
+    if not test:
+        raise HTTPException(404, "Test not found")
+    await db.delete(test)
+    await db.flush()
+
+
 @router.patch("/listening/tests/{test_id}")
 async def update_listening_test(
     test_id: str,
@@ -386,6 +401,21 @@ async def update_subsection(
 
     await db.flush()
     return {"id": sub.id}
+
+
+@router.delete("/listening/subsections/{subsection_id}", status_code=204)
+async def delete_subsection(
+    subsection_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    sub = (await db.execute(
+        select(ListeningSubsection).where(ListeningSubsection.id == subsection_id)
+    )).scalar_one_or_none()
+    if not sub:
+        raise HTTPException(404, "Subsection not found")
+    await db.delete(sub)
+    await db.flush()
 
 
 # ── Question management ───────────────────────────────────────────────────────
