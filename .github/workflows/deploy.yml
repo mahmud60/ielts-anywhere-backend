@@ -116,9 +116,8 @@ jobs:
             set -e
             cd /home/MAHMUD/ielts-anywhere-backend
             git pull origin main
-            python3 -m venv ~/celery-venv
-            source ~/celery-venv/bin/activate
-            pip install -r requirements.txt --quiet --no-cache-dir
+            pip3 install -r requirements.txt --user --quiet --no-cache-dir
+            export PATH="$HOME/.local/bin:$PATH"
             kill $(cat /tmp/celery.pid) 2>/dev/null || true
             nohup celery -A app.tasks.grading.celery_app worker \
               --loglevel=info \
