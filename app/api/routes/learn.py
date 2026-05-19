@@ -19,7 +19,7 @@ from app.core.config import settings
 
 router = APIRouter(prefix="/learn", tags=["learn"])
 
-_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 _MODULES = ("listening", "reading", "writing", "speaking")
 
@@ -91,7 +91,7 @@ async def get_vocabulary_exercises(
 Reply ONLY valid JSON, no markdown. Generate 4 exercises and 3 phrases:
 {{"focus_areas":["area1","area2"],"exercises":[{{"word":"...","part_of_speech":"...","definition":"...","ielts_topics":["..."],"example_sentence":"...","gap_fill":"sentence with _____","gap_fill_answer":"...","collocations":["..."],"usage_tip":"..."}}],"phrases":[{{"phrase":"...","meaning":"...","example":"...","register":"..."}}],"study_tip":"..."}}"""
 
-    response = _client.messages.create(
+    response = await _client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1000,
         messages=[{"role": "user", "content": prompt}],
@@ -127,7 +127,7 @@ async def get_grammar_exercises(
 Reply ONLY valid JSON, no markdown. Generate 4 exercises and 2 patterns:
 {{"focus_areas":["area1","area2"],"exercises":[{{"structure":"...","explanation":"...","example":"...","transform_task":"...","model_answer":"...","common_error":"...","ielts_tip":"..."}}],"patterns":[{{"name":"...","when_to_use":"...","active_example":"...","passive_example":"...","ielts_tip":"..."}}],"study_tip":"..."}}"""
 
-    response = _client.messages.create(
+    response = await _client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1000,
         messages=[{"role": "user", "content": prompt}],
