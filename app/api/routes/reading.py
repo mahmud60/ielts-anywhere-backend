@@ -6,10 +6,10 @@ from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.models.user import User
 from app.models.test import TestAttempt, ModuleType, GradingStatus
-from app.models.reading import ReadingTest, ReadingQuestion, ReadingPassage, ReadingQuestionGroup
+from app.models.reading import ReadingTest, ReadingPassage, ReadingQuestionGroup, ReadingQuestion
 from app.models.ielts_test import IeltsTest, TestSession
 from app.schemas.reading import (
-    ReadingTestOut, SubmitReadingRequest,
+    SubmitReadingRequest,
     ReadingResultOut, QuestionResult, PassageResult,
 )
 from app.api.routes.auth import get_current_user
@@ -19,36 +19,60 @@ router = APIRouter(prefix="/reading", tags=["reading"])
 
 
 def _load_options():
-    """
-    Eager-load chain: test → passages → question_groups → questions.
-    The scorer needs question.group.question_type, so groups must
-    be loaded whenever questions are loaded.
-    """
-    return selectinload(ReadingTest.passages).selectinload(
-        ReadingTest.passages.property.mapper.class_.question_groups
-    ).selectinload(
-        ReadingPassage.question_groups
+    """Eager-load chain: test → passages → question_groups → questions."""
+    return (
+        selectinload(ReadingTest.passages)
+        .selectinload(ReadingPassage.question_groups)
+        .selectinload(ReadingQuestionGroup.questions)
     )
 
 
-def _load_options_simple():
-    """Alternative using string-based relationship names."""
-    return selectinload("passages").selectinload(
-        "question_groups"
-    ).selectinload("questions")
+def _serialize_test(test: ReadingTest) -> dict:
+    return {
+        "id": str(test.id),
+        "title": test.title,
+        "test_type": test.test_type,
+        "passages": [
+            {
+                "id": str(p.id),
+                "passage_number": p.passage_number,
+                "title": p.title,
+                "body": p.body,
+                "paragraphs": p.paragraphs,
+                "question_groups": [
+                    {
+                        "id": str(g.id),
+                        "order_index": g.order_index,
+                        "question_type": g.question_type.value,
+                        "instruction": g.instruction,
+                        "heading_options": g.heading_options,
+                        "paragraph_labels": g.paragraph_labels,
+                        "word_limit": g.word_limit,
+                        "questions": [
+                            {
+                                "id": str(q.id),
+                                "order_index": q.order_index,
+                                "question_text": q.question_text,
+                                "options": q.options,
+                                # answer_key intentionally absent
+                            }
+                            for q in g.questions
+                        ],
+                    }
+                    for g in p.question_groups
+                ],
+            }
+            for p in test.passages
+        ],
+    }
 
 
-@router.get("/for-session/{session_id}", response_model=ReadingTestOut)
+@router.get("/for-session/{session_id}")
 async def get_test_for_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Frontend calls this instead of fetching a test by ID directly.
-    Walks: session → IeltsTest → reading_test_id → ReadingTest.
-    Answer keys are never included in the response.
-    """
     session = (await db.execute(
         select(TestSession).where(
             TestSession.id == session_id,
@@ -67,15 +91,12 @@ async def get_test_for_session(
     test = (await db.execute(
         select(ReadingTest)
         .where(ReadingTest.id == ielts.reading_test_id)
-        .options(
-            selectinload(ReadingTest.passages)
-            .selectinload(ReadingPassage.question_groups)
-            .selectinload(ReadingQuestionGroup.questions)
-        )
+        .options(_load_options())
     )).scalar_one_or_none()
     if not test:
         raise HTTPException(404, "Reading test not found")
-    return test
+
+    return {"status": 200, "ok": True, "data": _serialize_test(test)}
 
 
 @router.post("/submit", response_model=ReadingResultOut, status_code=201)
@@ -84,19 +105,10 @@ async def submit_reading(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Scores all answers server-side and saves the attempt.
-    The question.group relationship is loaded so the scorer
-    can access question_type without extra queries.
-    """
     test = (await db.execute(
         select(ReadingTest)
         .where(ReadingTest.id == body.test_id)
-        .options(
-            selectinload(ReadingTest.passages)
-            .selectinload(ReadingPassage.question_groups)
-            .selectinload(ReadingQuestionGroup.questions)
-        )
+        .options(_load_options())
     )).scalar_one_or_none()
     if not test:
         raise HTTPException(404, "Test not found")
@@ -111,8 +123,6 @@ async def submit_reading(
 
         for group in passage.question_groups:
             for question in group.questions:
-                # Manually attach group so scorer can access question_type
-                # without an extra DB hit (already in memory from selectinload)
                 question.group = group
 
                 qid = str(question.id)
