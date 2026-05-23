@@ -48,12 +48,15 @@ def _serialize_test(test: ReadingTest) -> dict:
                         "heading_options": g.heading_options,
                         "paragraph_labels": g.paragraph_labels,
                         "word_limit": g.word_limit,
+                        "subsection_type": g.subsection_type,
+                        "title": g.title,
                         "questions": [
                             {
                                 "id": str(q.id),
                                 "order_index": q.order_index,
                                 "question_text": q.question_text,
                                 "options": q.options,
+                                "group_label": q.group_label,
                                 # answer_key intentionally absent
                             }
                             for q in g.questions

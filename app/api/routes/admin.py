@@ -764,6 +764,87 @@ async def delete_reading_question(
     await db.flush()
     return {"deleted": question_id}
 
+
+@router.delete("/reading/groups/{group_id}")
+async def delete_reading_group(
+    group_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    group = (await db.execute(
+        select(ReadingQuestionGroup)
+        .where(ReadingQuestionGroup.id == group_id)
+        .options(selectinload(ReadingQuestionGroup.questions))
+    )).scalar_one_or_none()
+    if not group:
+        raise HTTPException(404, "Group not found")
+    for question in group.questions:
+        await db.delete(question)
+    await db.delete(group)
+    await db.flush()
+    return {"deleted": group_id}
+
+
+@router.delete("/reading/passages/{passage_id}")
+async def delete_reading_passage(
+    passage_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    passage = (await db.execute(
+        select(ReadingPassage)
+        .where(ReadingPassage.id == passage_id)
+        .options(
+            selectinload(ReadingPassage.question_groups)
+            .selectinload(ReadingQuestionGroup.questions)
+        )
+    )).scalar_one_or_none()
+    if not passage:
+        raise HTTPException(404, "Passage not found")
+    for group in passage.question_groups:
+        for question in group.questions:
+            await db.delete(question)
+        await db.delete(group)
+    await db.delete(passage)
+    await db.flush()
+    return {"deleted": passage_id}
+
+
+@router.delete("/reading/tests/{test_id}")
+async def delete_reading_test(
+    test_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    from app.models.ielts_test import IeltsTest
+    test = (await db.execute(
+        select(ReadingTest)
+        .where(ReadingTest.id == test_id)
+        .options(
+            selectinload(ReadingTest.passages)
+            .selectinload(ReadingPassage.question_groups)
+            .selectinload(ReadingQuestionGroup.questions)
+        )
+    )).scalar_one_or_none()
+    if not test:
+        raise HTTPException(404, "Test not found")
+    # Null out any IELTS test references before deleting
+    linked = (await db.execute(
+        select(IeltsTest).where(IeltsTest.reading_test_id == test_id)
+    )).scalars().all()
+    for ielts in linked:
+        ielts.reading_test_id = None
+    await db.flush()
+    for passage in test.passages:
+        for group in passage.question_groups:
+            for question in group.questions:
+                await db.delete(question)
+            await db.delete(group)
+        await db.delete(passage)
+    await db.delete(test)
+    await db.flush()
+    return {"deleted": test_id}
+
 #---Writing Management---------------------------------------------------------------------------
 
 @router.get("/writing/tests")
