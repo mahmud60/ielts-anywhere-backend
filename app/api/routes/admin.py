@@ -435,7 +435,7 @@ async def list_questions(
         {
             "id": q.id,
             "order": q.order,
-            "title": q.title,
+            "group_label": q.group_label,
             "question_type": q.question_type,
             "ielts_question_type": q.ielts_question_type,
             "stem": q.stem,
