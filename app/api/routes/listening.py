@@ -37,7 +37,7 @@ def _serialize_test(test: ListeningTest) -> dict:
         "description": test.description,
         "task": test.task or "ielts_listening",
         "type": test.type or "text",
-        "order": test.order or 1,
+        "order": test.test_order or 1,
         "is_active": test.is_active,
         "is_recommended": bool(test.is_recommended),
         "mock_test_order": test.mock_test_order,
@@ -119,7 +119,7 @@ async def submit_listening(
                 question_results.append(QuestionResult(
                     question_id=qid,
                     question_type=question.question_type,
-                    text=question.text,
+                    text=question.stem,
                     user_answer=user_answer,
                     correct_answer=question.answer_key,
                     is_correct=is_correct,

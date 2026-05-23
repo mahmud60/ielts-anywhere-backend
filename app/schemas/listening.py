@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any
 import uuid
 from datetime import datetime
@@ -9,14 +9,14 @@ from datetime import datetime
 class QuestionOut(BaseModel):
     id: int
     order: int
-    title: str | None = None
+    group_label: str | None = None
     question_type: str
     ielts_question_type: str | None = None
-    text: str
+    text: str | None = Field(None, validation_alias="stem")
     max_selected_options: int | None = None
     options: list[dict] = []
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class SubsectionOut(BaseModel):
@@ -24,7 +24,7 @@ class SubsectionOut(BaseModel):
     order: int
     title: str | None = None
     subsection_type: str
-    text: str | None = None
+    text: str | None = Field(None, validation_alias="instruction")
     visual: Any = None
     grid_headers: Any = None
     grid_cells: Any = None
@@ -40,7 +40,7 @@ class SectionOut(BaseModel):
     audio: str | None = None
     subsections: list[SubsectionOut] = []
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 # ── Sent from frontend on submit ───────────────────────────────────────────

@@ -10,11 +10,12 @@ class ListeningTest(Base):
     __tablename__ = "listening_tests"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_qid = Column(String, unique=True, nullable=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     task = Column(String, default="ielts_listening")
     type = Column(String, default="text")
-    order = Column(Integer, default=1)
+    test_order = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
     is_recommended = Column(Boolean, default=False)
     mock_test_order = Column(Integer, nullable=True)
@@ -37,6 +38,7 @@ class ListeningSection(Base):
     part = Column(Integer, nullable=False)
     title = Column(String, nullable=True)
     audio = Column(String, nullable=True)
+    transcript = Column(Text, nullable=True)
 
     test = relationship("ListeningTest", back_populates="sections")
     subsections = relationship(
@@ -54,9 +56,9 @@ class ListeningSubsection(Base):
     section_id = Column(Integer, ForeignKey("listening_sections.id"))
     order = Column(Integer, nullable=False)
     title = Column(String, nullable=True)
-    subsection_type = Column(String, nullable=False)  # "form" or "regular"
-    text = Column(Text, nullable=True)
-    visual = Column(JSON, nullable=True)
+    subsection_type = Column(String, nullable=False)
+    instruction = Column(Text, nullable=True)
+    visual = Column(String, nullable=True)
     grid_headers = Column(JSON, nullable=True)
     grid_cells = Column(JSON, nullable=True)
 
@@ -75,13 +77,14 @@ class ListeningQuestion(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     subsection_id = Column(Integer, ForeignKey("listening_subsections.id"))
     order = Column(Integer, nullable=False)
-    title = Column(String, nullable=True)
-    question_type = Column(String, nullable=False)  # fill_in_the_blank | multiple_choices | multiple_select | dropdown
+    group_label = Column(String, nullable=True)
+    question_type = Column(String, nullable=False)
     ielts_question_type = Column(String, nullable=True)
-    text = Column(Text, nullable=False)
+    stem = Column(Text, nullable=True)
     max_selected_options = Column(Integer, nullable=True)
-    options = Column(JSON, default=list)  # [{order: int, option: str}]
-    answer_key = Column(JSON, nullable=False)
+    options = Column(JSON, default=list)
+    answer_key = Column(JSON, nullable=True)
+    explanation = Column(Text, nullable=True)
     wrong_answer_tip = Column(Text, nullable=True)
 
     subsection = relationship("ListeningSubsection", back_populates="questions")

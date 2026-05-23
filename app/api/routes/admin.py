@@ -340,7 +340,7 @@ async def list_subsections(
             "order": sub.order,
             "title": sub.title,
             "subsection_type": sub.subsection_type,
-            "text": sub.text,
+            "instruction": sub.instruction,
             "visual": sub.visual,
             "grid_headers": sub.grid_headers,
             "grid_cells": sub.grid_cells,
@@ -372,7 +372,7 @@ async def create_subsection(
         order=body.get("order", max_order + 1),
         title=body.get("title"),
         subsection_type=body.get("subsection_type", "regular"),
-        text=body.get("text"),
+        instruction=body.get("instruction"),
         visual=body.get("visual"),
         grid_headers=body.get("grid_headers"),
         grid_cells=body.get("grid_cells"),
@@ -395,7 +395,7 @@ async def update_subsection(
     if not sub:
         raise HTTPException(404, "Subsection not found")
 
-    for field in ["order", "title", "subsection_type", "text", "visual", "grid_headers", "grid_cells"]:
+    for field in ["order", "title", "subsection_type", "instruction", "visual", "grid_headers", "grid_cells"]:
         if field in body:
             setattr(sub, field, body[field])
 
@@ -438,7 +438,7 @@ async def list_questions(
             "title": q.title,
             "question_type": q.question_type,
             "ielts_question_type": q.ielts_question_type,
-            "text": q.text,
+            "stem": q.stem,
             "max_selected_options": q.max_selected_options,
             "options": q.options,
             "answer_key": q.answer_key,
@@ -472,10 +472,10 @@ async def create_question(
         title=body.get("title"),
         question_type=body["question_type"],
         ielts_question_type=body.get("ielts_question_type"),
-        text=body["text"],
+        stem=body["stem"],
         max_selected_options=body.get("max_selected_options"),
         options=body.get("options", []),
-        answer_key=body["answer_key"],
+        answer_key=body.get("answer_key"),
         wrong_answer_tip=body.get("wrong_answer_tip"),
     )
     db.add(question)
@@ -497,7 +497,7 @@ async def update_question(
         raise HTTPException(404, "Question not found")
 
     for field in ["order", "title", "question_type", "ielts_question_type",
-                  "text", "max_selected_options", "options", "answer_key", "wrong_answer_tip"]:
+                  "stem", "max_selected_options", "options", "answer_key", "wrong_answer_tip"]:
         if field in body:
             setattr(question, field, body[field])
 
