@@ -19,7 +19,20 @@ def _norm(text: str) -> str:
 
 # ── Per-type scorers ──────────────────────────────────────────────────────────
 
+def _as_list(key: Any) -> list:
+    """Normalise answer_key to a list for uniform comparison."""
+    if isinstance(key, list):
+        return key
+    return [key]
+
+
 def _score_mcq(key: Any, user: Any) -> bool:
+    # Old format: key is int (option order), user is int.
+    # New Cathoven format: key is list of accepted option text strings.
+    if isinstance(key, list):
+        if user is None:
+            return False
+        return _norm(str(user)) in [_norm(str(k)) for k in key]
     try:
         return int(user) == int(key)
     except (TypeError, ValueError):
@@ -27,33 +40,49 @@ def _score_mcq(key: Any, user: Any) -> bool:
 
 
 def _score_tfng(key: Any, user: Any) -> bool:
+    # Old format: int. New Cathoven format: ["TRUE","T"] / ["FALSE","F"] / ["NOT GIVEN","NG"].
+    if isinstance(key, list):
+        if user is None:
+            return False
+        return _norm(str(user)) in [_norm(str(k)) for k in key]
     return _score_mcq(key, user)
 
 
 def _score_fill(key: Any, user: Any) -> bool:
     if user is None:
         return False
-    return _norm(user) == _norm(key)
+    user_norm = _norm(str(user))
+    return any(user_norm == _norm(str(k)) for k in _as_list(key))
 
 
 def _score_matching_headings(key: Any, user: Any) -> bool:
-    """
-    key: "iii"   user: "iii"
-    Case-insensitive, strip whitespace.
-    """
     if user is None:
         return False
-    return str(user).lower().strip() == str(key).lower().strip()
+    user_val = str(user).lower().strip()
+    return any(user_val == str(k).lower().strip() for k in _as_list(key))
 
 
 def _score_matching_info(key: Any, user: Any) -> bool:
+    if user is None:
+        return False
+    user_val = str(user).upper().strip()
+    return any(user_val == str(k).upper().strip() for k in _as_list(key))
+
+
+def _score_multiple_select(key: Any, user: Any) -> bool:
     """
-    key: "B"   user: "B"
-    Paragraph label match — uppercase both sides.
+    key: list of accepted option texts (all must match).
+    user: list of selected option texts from frontend.
     """
     if user is None:
         return False
-    return str(user).upper().strip() == str(key).upper().strip()
+    if not isinstance(key, list):
+        key = [key]
+    if not isinstance(user, list):
+        user = [user]
+    key_norms = {_norm(str(k)) for k in key}
+    user_norms = {_norm(str(u)) for u in user}
+    return key_norms == user_norms
 
 
 def _score_short_answer(key: Any, user: Any) -> bool:
@@ -96,6 +125,7 @@ _SCORERS = {
     ReadingQuestionType.matching_headings: _score_matching_headings,
     ReadingQuestionType.matching_info: _score_matching_info,
     ReadingQuestionType.short_answer: _score_short_answer,
+    ReadingQuestionType.multiple_select: _score_multiple_select,
 }
 
 
@@ -161,6 +191,10 @@ def generate_tips(wrong_questions: list[ReadingQuestion]) -> list[str]:
         ReadingQuestionType.short_answer: (
             "Short answer: use exact words from the passage. "
             "Never paraphrase — IELTS short answers require passage language."
+        ),
+        ReadingQuestionType.multiple_select: (
+            "Multiple select: read all options carefully before choosing. "
+            "All selected answers must be correct — a partially correct selection scores zero."
         ),
     }
     tips: list[str] = []

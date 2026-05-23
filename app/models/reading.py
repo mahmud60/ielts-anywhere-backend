@@ -16,16 +16,23 @@ class ReadingQuestionType(str, enum.Enum):
     matching_headings = "matching_headings"
     matching_info = "matching_info"
     short_answer = "short_answer"
+    multiple_select = "multiple_select"
 
 
 class ReadingTest(Base):
     __tablename__ = "reading_tests"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_qid = Column(String, unique=True, nullable=True)
     title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    task = Column(String, nullable=True)
     test_type = Column(String, default="academic")
+    test_order = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
     is_demo = Column(Boolean, default=False)
+    is_recommended = Column(Boolean, default=False)
+    mock_test_order = Column(Integer, nullable=True)
 
     passages = relationship(
         "ReadingPassage",
@@ -66,6 +73,7 @@ class ReadingQuestionGroup(Base):
     heading_options  — for matching_headings: list of heading strings
     paragraph_labels — for matching_info: list of paragraph letters ["A","B","C"...]
     word_limit       — for fill/short_answer: e.g. "NO MORE THAN TWO WORDS"
+    subsection_type  — Cathoven layout type: regular, form, table, flowchart
     """
     __tablename__ = "reading_question_groups"
 
@@ -77,6 +85,9 @@ class ReadingQuestionGroup(Base):
     heading_options = Column(JSON)
     paragraph_labels = Column(JSON)
     word_limit = Column(String)
+    subsection_type = Column(String, nullable=True)
+    title = Column(String, nullable=True)
+    image = Column(String, nullable=True)
 
     passage = relationship("ReadingPassage", back_populates="question_groups")
     questions = relationship(
@@ -104,8 +115,11 @@ class ReadingQuestion(Base):
     group_id = Column(UUID(as_uuid=True), ForeignKey("reading_question_groups.id"))
     order_index = Column(Integer, nullable=False)
     question_text = Column(Text, nullable=False)
-    options = Column(JSON)        # for mcq only
+    options = Column(JSON)
     answer_key = Column(JSON, nullable=False)
     wrong_answer_tip = Column(Text)
+    group_label = Column(String, nullable=True)
+    ielts_question_type = Column(String, nullable=True)
+    max_selected_options = Column(Integer, nullable=True)
 
     group = relationship("ReadingQuestionGroup", back_populates="questions")
