@@ -211,7 +211,9 @@ async def submit_reading(
         module=ModuleType.reading,
         status=GradingStatus.complete,
         overall_band=overall_band,
+        test_id=str(body.test_id),
         subscores={
+            "test_title": test.title,
             "passages": [
                 {
                     "passage_number": p.passage_number,
@@ -227,6 +229,7 @@ async def submit_reading(
         },
         raw_answers=body.answers,
         improvement_tips=tips,
+        question_results=[qr.model_dump() for qr in question_results],
     )
     db.add(attempt)
     await db.flush()
@@ -247,7 +250,7 @@ async def get_attempts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
+    rows = (await db.execute(
         select(TestAttempt)
         .where(
             TestAttempt.user_id == current_user.id,
@@ -255,14 +258,46 @@ async def get_attempts(
         )
         .order_by(TestAttempt.created_at.desc())
         .limit(20)
-    )
+    )).scalars().all()
     return [
         {
             "id": str(a.id),
+            "test_id": a.test_id,
+            "test_title": (a.subscores or {}).get("test_title"),
             "overall_band": a.overall_band,
-            "subscores": a.subscores,
-            "improvement_tips": a.improvement_tips,
+            "correct": (a.subscores or {}).get("correct", 0),
+            "total": (a.subscores or {}).get("total", 0),
             "created_at": a.created_at.isoformat() if a.created_at else None,
         }
-        for a in result.scalars().all()
+        for a in rows
     ]
+
+
+@router.get("/attempts/{attempt_id}")
+async def get_attempt(
+    attempt_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    attempt = (await db.execute(
+        select(TestAttempt).where(
+            TestAttempt.id == attempt_id,
+            TestAttempt.user_id == current_user.id,
+            TestAttempt.module == ModuleType.reading,
+        )
+    )).scalar_one_or_none()
+    if not attempt:
+        raise HTTPException(404, "Attempt not found")
+    sc = attempt.subscores or {}
+    return {
+        "attempt_id": str(attempt.id),
+        "test_id": attempt.test_id,
+        "test_title": sc.get("test_title"),
+        "correct": sc.get("correct", 0),
+        "total": sc.get("total", 0),
+        "overall_band": attempt.overall_band,
+        "passage_results": sc.get("passages", []),
+        "question_results": attempt.question_results or [],
+        "improvement_tips": attempt.improvement_tips or [],
+        "created_at": attempt.created_at.isoformat() if attempt.created_at else None,
+    }

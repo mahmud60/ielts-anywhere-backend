@@ -29,5 +29,7 @@ class TestAttempt(Base):
     ai_feedback = Column(Text)
     improvement_tips = Column(JSON)
     raw_answers = Column(JSON)
+    test_id = Column(Text, nullable=True)
+    question_results = Column(JSON, nullable=True)
 
     user = relationship("User", back_populates="test_attempts")
