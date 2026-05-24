@@ -70,6 +70,50 @@ def _serialize_test(test: ReadingTest) -> dict:
     }
 
 
+@router.get("/tests")
+async def list_reading_tests(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(ReadingTest)
+        .where(ReadingTest.is_active == True)
+        .options(_load_options())
+        .order_by(ReadingTest.test_order)
+    )
+    tests = result.scalars().all()
+    return [
+        {
+            "id": str(t.id),
+            "title": t.title,
+            "test_type": t.test_type,
+            "passage_count": len(t.passages),
+            "question_count": sum(
+                len(q.questions)
+                for p in t.passages
+                for q in p.question_groups
+            ),
+        }
+        for t in tests
+    ]
+
+
+@router.get("/tests/{test_id}")
+async def get_reading_test(
+    test_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    test = (await db.execute(
+        select(ReadingTest)
+        .where(ReadingTest.id == test_id, ReadingTest.is_active == True)
+        .options(_load_options())
+    )).scalar_one_or_none()
+    if not test:
+        raise HTTPException(404, "Test not found")
+    return {"status": 200, "ok": True, "data": _serialize_test(test)}
+
+
 @router.get("/for-session/{session_id}")
 async def get_test_for_session(
     session_id: str,

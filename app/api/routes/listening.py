@@ -47,6 +47,54 @@ def _serialize_test(test: ListeningTest) -> dict:
     }
 
 
+@router.get("/tests")
+async def list_listening_tests(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(ListeningTest)
+        .where(ListeningTest.is_active == True)
+        .options(
+            selectinload(ListeningTest.sections)
+            .selectinload(ListeningSection.subsections)
+            .selectinload(ListeningSubsection.questions)
+        )
+        .order_by(ListeningTest.test_order)
+    )
+    tests = result.scalars().all()
+    return [
+        {
+            "id": str(t.id),
+            "title": t.title,
+            "description": t.description,
+            "question_count": sum(
+                len(sub.questions)
+                for s in t.sections
+                for sub in s.subsections
+            ),
+            "section_count": len(t.sections),
+        }
+        for t in tests
+    ]
+
+
+@router.get("/tests/{test_id}")
+async def get_listening_test(
+    test_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    test = (await db.execute(
+        select(ListeningTest)
+        .where(ListeningTest.id == test_id, ListeningTest.is_active == True)
+        .options(_load_options())
+    )).scalar_one_or_none()
+    if not test:
+        raise HTTPException(404, "Test not found")
+    return {"status": 200, "ok": True, "data": _serialize_test(test)}
+
+
 @router.get("/for-session/{session_id}")
 async def get_test_for_session(
     session_id: str,
