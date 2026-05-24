@@ -243,7 +243,6 @@ class _ELMessage(BaseModel):
 
 
 class _ELSubmitBody(BaseModel):
-    session_id: str
     transcript: list[_ELMessage]
     elevenlabs_session_id: Optional[str] = None
 
@@ -272,33 +271,6 @@ _SCORE_SYSTEM = (
 )
 
 
-@router.get("/session-token")
-async def get_el_session_token(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Create a new speaking_attempts row and return an ElevenLabs signed URL."""
-    attempt = SpeakingAttempt(
-        user_id=str(current_user.id),
-        status="in_progress",
-    )
-    db.add(attempt)
-    await db.flush()
-    attempt_id = str(attempt.id)
-    await db.commit()
-
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        res = await client.get(
-            "https://api.elevenlabs.io/v1/convai/conversation/get_signed_url",
-            params={"agent_id": settings.ELEVENLABS_AGENT_ID},
-            headers={"xi-api-key": settings.ELEVENLABS_API_KEY},
-        )
-    if not res.is_success:
-        raise HTTPException(502, f"ElevenLabs error: {res.text}")
-
-    return {"signed_url": res.json()["signed_url"], "session_id": attempt_id}
-
-
 @router.post("/el-submit")
 async def el_submit_speaking(
     body: _ELSubmitBody,
@@ -306,19 +278,6 @@ async def el_submit_speaking(
     current_user: User = Depends(get_current_user),
 ):
     """Score a completed ElevenLabs conversation with Claude and store the result."""
-    attempt = (await db.execute(
-        select(SpeakingAttempt).where(
-            SpeakingAttempt.id == PyUUID(body.session_id),
-            SpeakingAttempt.user_id == str(current_user.id),
-        )
-    )).scalar_one_or_none()
-
-    if not attempt:
-        raise HTTPException(404, "Session not found")
-
-    if attempt.status == "completed":
-        return {"session_id": body.session_id, "already_scored": True}
-
     transcript_text = "\n".join(
         f"{'Examiner' if m.role == 'agent' else 'Candidate'}: {m.text}"
         for m in body.transcript
@@ -326,6 +285,13 @@ async def el_submit_speaking(
 
     if not transcript_text.strip():
         raise HTTPException(400, "Transcript is empty — nothing to score")
+
+    attempt = SpeakingAttempt(
+        user_id=str(current_user.id),
+        status="in_progress",
+    )
+    db.add(attempt)
+    await db.flush()
 
     try:
         client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -361,7 +327,7 @@ async def el_submit_speaking(
     attempt.completed_at = datetime.now(timezone.utc)
     await db.commit()
 
-    return {"session_id": body.session_id, "result": result}
+    return {"session_id": str(attempt.id), "result": result}
 
 
 @router.get("/results/{attempt_id}")
