@@ -236,6 +236,27 @@ async def get_attempts(
 # ─── ElevenLabs standalone speaking routes ─────────────────────────────────
 
 
+@router.get("/el-signed-url")
+async def get_el_signed_url(
+    current_user: User = Depends(get_current_user),
+):
+    """Return a short-lived ElevenLabs signed URL for the frontend to open a conversation."""
+    if not settings.ELEVENLABS_API_KEY or not settings.ELEVENLABS_AGENT_ID:
+        raise HTTPException(503, "ElevenLabs is not configured on this server")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        res = await client.get(
+            "https://api.elevenlabs.io/v1/convai/conversation/get_signed_url",
+            params={"agent_id": settings.ELEVENLABS_AGENT_ID},
+            headers={"xi-api-key": settings.ELEVENLABS_API_KEY},
+        )
+
+    if not res.is_success:
+        raise HTTPException(502, f"ElevenLabs error: {res.text}")
+
+    return res.json()  # { "signed_url": "wss://..." }
+
+
 class _ELMessage(BaseModel):
     role: str       # 'agent' | 'user'
     text: str
