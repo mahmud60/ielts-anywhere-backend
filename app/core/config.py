@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # OpenAI (Whisper transcription)
     OPENAI_API_KEY: str = ""
 
+    # ElevenLabs (conversational speaking agent)
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_AGENT_ID: str = "agent_9801ksdjxvqqfkdvsh8acxc4xge5"
+
     # Email (Resend — https://resend.com)
     RESEND_API_KEY: str = ""
     FROM_EMAIL: str = "noreply@ieltsanywhere.app"

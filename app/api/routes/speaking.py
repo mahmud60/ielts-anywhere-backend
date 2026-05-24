@@ -1,13 +1,22 @@
+import json
+import re
+from datetime import datetime, timezone
+from typing import Optional
+from uuid import UUID as PyUUID
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 import httpx
+from anthropic import AsyncAnthropic
 
 from app.db.session import get_db
 from app.models.user import User
 from app.models.test import TestAttempt, ModuleType, GradingStatus
 from app.models.speaking import SpeakingTest
+from app.models.speaking_attempt import SpeakingAttempt
 from app.models.ielts_test import IeltsTest, TestSession
 from app.schemas.speaking import (
     SpeakingTestOut, SubmitSpeakingRequest,
@@ -20,16 +29,15 @@ from app.core.config import settings
 router = APIRouter(prefix="/speaking", tags=["speaking"])
 
 
+# ─── Existing session-linked routes ────────────────────────────────────────
+
+
 @router.get("/for-session/{session_id}", response_model=SpeakingTestOut)
 async def get_test_for_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Returns the speaking test linked to this session.
-    Same session → IeltsTest → speaking_test_id pattern.
-    """
     session = (await db.execute(
         select(TestSession).where(
             TestSession.id == session_id,
@@ -61,12 +69,6 @@ async def submit_speaking(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Accepts the student's full speaking transcript and queues AI grading.
-    Returns immediately with status="pending".
-    Frontend polls GET /speaking/attempts/{id} until status=="complete".
-    """
-    # Validate test exists
     test = (await db.execute(
         select(SpeakingTest).where(SpeakingTest.id == body.test_id)
     )).scalar_one_or_none()
@@ -76,7 +78,6 @@ async def submit_speaking(
     if len(body.part_responses) != 3:
         raise HTTPException(400, "All three parts must be submitted together")
 
-    # Build raw answers for storage
     raw_answers = {
         f"part{pr.part_number}": {
             "part_number": pr.part_number,
@@ -94,20 +95,13 @@ async def submit_speaking(
     db.add(attempt)
     await db.flush()
 
-    # Queue Celery grading task
     part_responses_data = [
-        {
-            "part_number": pr.part_number,
-            "exchanges": pr.exchanges,
-        }
+        {"part_number": pr.part_number, "exchanges": pr.exchanges}
         for pr in body.part_responses
     ]
     grade_speaking_task.delay(str(attempt.id), part_responses_data)
 
-    return SpeakingResultOut(
-        attempt_id=attempt.id,
-        status=GradingStatus.pending,
-    )
+    return SpeakingResultOut(attempt_id=attempt.id, status=GradingStatus.pending)
 
 
 @router.get("/attempts/{attempt_id}", response_model=SpeakingResultOut)
@@ -116,10 +110,6 @@ async def get_attempt(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Returns current grading state. Frontend polls this every 2s
-    after submission until status == "complete" or "failed".
-    """
     attempt = (await db.execute(
         select(TestAttempt).where(
             TestAttempt.id == attempt_id,
@@ -130,7 +120,6 @@ async def get_attempt(
         raise HTTPException(404, "Attempt not found")
 
     if attempt.status != GradingStatus.complete or not attempt.subscores:
-        # Include transcript from raw_answers so frontend can show it
         transcript = None
         if attempt.raw_answers:
             transcript = []
@@ -149,7 +138,6 @@ async def get_attempt(
             transcript=transcript,
         )
 
-    # Build PartScore list from subscores
     s = attempt.subscores
     part_scores = []
     for part_key, part_num, part_type in [
@@ -171,7 +159,6 @@ async def get_attempt(
                 examiner_notes=p.get("examiner_notes"),
             ))
 
-    # Rebuild transcript from raw_answers
     transcript = []
     if attempt.raw_answers:
         for part_key in ["part1", "part2", "part3"]:
@@ -199,11 +186,6 @@ async def transcribe_audio(
     audio: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Accepts a WebM/OGG audio blob from the browser MediaRecorder,
-    forwards it to OpenAI Whisper, and returns the transcript text.
-    Falls back to an empty string if OPENAI_API_KEY is not configured.
-    """
     if not settings.OPENAI_API_KEY:
         return {"transcript": ""}
 
@@ -248,4 +230,204 @@ async def get_attempts(
             "created_at": a.created_at.isoformat() if a.created_at else None,
         }
         for a in result.scalars().all()
+    ]
+
+
+# ─── ElevenLabs standalone speaking routes ─────────────────────────────────
+
+
+class _ELMessage(BaseModel):
+    role: str       # 'agent' | 'user'
+    text: str
+    timestamp: float
+
+
+class _ELSubmitBody(BaseModel):
+    session_id: str
+    transcript: list[_ELMessage]
+    elevenlabs_session_id: Optional[str] = None
+
+
+def _parse_claude_json(text: str) -> dict:
+    text = re.sub(r"```(?:json)?\n?", "", text).strip()
+    return json.loads(text)
+
+
+def _to_float(v):
+    return float(v) if v is not None else None
+
+
+_SCORE_SYSTEM = (
+    "You are an expert IELTS examiner. Score this speaking test transcript on all 4 criteria.\n"
+    "Return ONLY valid JSON with no markdown fences or explanation:\n"
+    "{\n"
+    '  "overall_band": <number, 0.5 increments, 1–9>,\n'
+    '  "fluency_coherence": {"band": <number>, "feedback": "<2-3 sentences>"},\n'
+    '  "lexical_resource": {"band": <number>, "feedback": "<2-3 sentences>"},\n'
+    '  "grammatical_range": {"band": <number>, "feedback": "<2-3 sentences>"},\n'
+    '  "pronunciation": {"band": <number>, "feedback": "<2-3 sentences, inferred from transcript patterns>"},\n'
+    '  "examiner_summary": "<2-3 sentence overall summary>"\n'
+    "}\n"
+    "overall_band = average of the 4 criteria bands, rounded to nearest 0.5."
+)
+
+
+@router.get("/session-token")
+async def get_el_session_token(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new speaking_attempts row and return an ElevenLabs signed URL."""
+    attempt = SpeakingAttempt(
+        user_id=str(current_user.id),
+        status="in_progress",
+    )
+    db.add(attempt)
+    await db.flush()
+    attempt_id = str(attempt.id)
+    await db.commit()
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        res = await client.get(
+            "https://api.elevenlabs.io/v1/convai/conversation/get_signed_url",
+            params={"agent_id": settings.ELEVENLABS_AGENT_ID},
+            headers={"xi-api-key": settings.ELEVENLABS_API_KEY},
+        )
+    if not res.is_success:
+        raise HTTPException(502, f"ElevenLabs error: {res.text}")
+
+    return {"signed_url": res.json()["signed_url"], "session_id": attempt_id}
+
+
+@router.post("/el-submit")
+async def el_submit_speaking(
+    body: _ELSubmitBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Score a completed ElevenLabs conversation with Claude and store the result."""
+    attempt = (await db.execute(
+        select(SpeakingAttempt).where(
+            SpeakingAttempt.id == PyUUID(body.session_id),
+            SpeakingAttempt.user_id == str(current_user.id),
+        )
+    )).scalar_one_or_none()
+
+    if not attempt:
+        raise HTTPException(404, "Session not found")
+
+    if attempt.status == "completed":
+        return {"session_id": body.session_id, "already_scored": True}
+
+    transcript_text = "\n".join(
+        f"{'Examiner' if m.role == 'agent' else 'Candidate'}: {m.text}"
+        for m in body.transcript
+    )
+
+    if not transcript_text.strip():
+        raise HTTPException(400, "Transcript is empty — nothing to score")
+
+    try:
+        client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        msg = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=_SCORE_SYSTEM,
+            messages=[{
+                "role": "user",
+                "content": f"Score this IELTS speaking transcript:\n\n{transcript_text}",
+            }],
+        )
+        result = _parse_claude_json(msg.content[0].text)
+    except Exception as exc:
+        attempt.status = "failed"
+        await db.commit()
+        raise HTTPException(500, f"Scoring failed: {exc}")
+
+    attempt.status = "completed"
+    attempt.transcript = [m.model_dump() for m in body.transcript]
+    attempt.overall_band = result["overall_band"]
+    attempt.fluency_coherence_band = result["fluency_coherence"]["band"]
+    attempt.fluency_coherence_feedback = result["fluency_coherence"]["feedback"]
+    attempt.lexical_resource_band = result["lexical_resource"]["band"]
+    attempt.lexical_resource_feedback = result["lexical_resource"]["feedback"]
+    attempt.grammatical_range_band = result["grammatical_range"]["band"]
+    attempt.grammatical_range_feedback = result["grammatical_range"]["feedback"]
+    attempt.pronunciation_band = result["pronunciation"]["band"]
+    attempt.pronunciation_feedback = result["pronunciation"]["feedback"]
+    attempt.examiner_summary = result.get("examiner_summary")
+    if body.elevenlabs_session_id:
+        attempt.elevenlabs_session_id = body.elevenlabs_session_id
+    attempt.completed_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return {"session_id": body.session_id, "result": result}
+
+
+@router.get("/results/{attempt_id}")
+async def get_el_speaking_results(
+    attempt_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    attempt = (await db.execute(
+        select(SpeakingAttempt).where(
+            SpeakingAttempt.id == PyUUID(attempt_id),
+            SpeakingAttempt.user_id == str(current_user.id),
+        )
+    )).scalar_one_or_none()
+
+    if not attempt:
+        raise HTTPException(404, "Result not found")
+
+    return {
+        "session_id": str(attempt.id),
+        "status": attempt.status,
+        "overall_band": _to_float(attempt.overall_band),
+        "fluency_coherence": {
+            "band": _to_float(attempt.fluency_coherence_band),
+            "feedback": attempt.fluency_coherence_feedback,
+        },
+        "lexical_resource": {
+            "band": _to_float(attempt.lexical_resource_band),
+            "feedback": attempt.lexical_resource_feedback,
+        },
+        "grammatical_range": {
+            "band": _to_float(attempt.grammatical_range_band),
+            "feedback": attempt.grammatical_range_feedback,
+        },
+        "pronunciation": {
+            "band": _to_float(attempt.pronunciation_band),
+            "feedback": attempt.pronunciation_feedback,
+        },
+        "examiner_summary": attempt.examiner_summary,
+        "transcript": attempt.transcript or [],
+        "created_at": attempt.created_at.isoformat() if attempt.created_at else None,
+        "completed_at": attempt.completed_at.isoformat() if attempt.completed_at else None,
+    }
+
+
+@router.get("/history")
+async def get_el_speaking_history(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = (await db.execute(
+        select(SpeakingAttempt)
+        .where(
+            SpeakingAttempt.user_id == str(current_user.id),
+            SpeakingAttempt.status == "completed",
+        )
+        .order_by(SpeakingAttempt.created_at.desc())
+        .limit(10)
+    )).scalars().all()
+
+    return [
+        {
+            "id": str(a.id),
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "overall_band": _to_float(a.overall_band),
+            "examiner_summary": a.examiner_summary,
+        }
+        for a in rows
     ]
