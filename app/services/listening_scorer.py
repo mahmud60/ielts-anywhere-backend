@@ -2,28 +2,56 @@ from typing import Any
 from app.models.listening import ListeningQuestion
 
 
+def _option_text(question: ListeningQuestion, order: Any) -> str | None:
+    """Return the option text for the given order value, or None if not found."""
+    for opt in (question.options or []):
+        if isinstance(opt, dict):
+            if opt.get("order") == order:
+                return opt.get("option", "")
+        elif isinstance(opt, str):
+            return opt
+    return None
+
+
+def _correct_set(answer_key: Any) -> set[str]:
+    """Normalise answer_key (string or list) to a set of lowercase stripped strings."""
+    if isinstance(answer_key, list):
+        return {str(k).lower().strip() for k in answer_key}
+    if answer_key is None:
+        return set()
+    return {str(answer_key).lower().strip()}
+
+
 def score_answer(question: ListeningQuestion, user_answer: Any) -> bool:
     qt = question.question_type
+    correct = _correct_set(question.answer_key)
 
-    if qt == "multiple_choices" or qt == "dropdown":
-        # answer_key is the correct option order (int)
-        try:
-            return int(user_answer) == int(question.answer_key)
-        except (TypeError, ValueError):
-            return str(user_answer).lower().strip() == str(question.answer_key).lower().strip()
+    if not correct:
+        return False
 
-    elif qt == "fill_in_the_blank":
+    if qt == "fill_in_the_blank":
         if user_answer is None:
             return False
-        user = str(user_answer).lower().strip()
-        correct = str(question.answer_key).lower().strip()
-        return user == correct
+        return str(user_answer).lower().strip() in correct
+
+    elif qt in ("multiple_choices", "dropdown"):
+        if user_answer is None:
+            return False
+        # user_answer is opt.order (int); look up the option text to compare
+        text = _option_text(question, user_answer)
+        if text is not None:
+            return text.lower().strip() in correct
+        # fallback: direct comparison
+        return str(user_answer).lower().strip() in correct
 
     elif qt == "multiple_select":
-        # answer_key: list of correct option orders; user_answer: list of selected orders
-        if not isinstance(user_answer, list) or not isinstance(question.answer_key, list):
+        if not isinstance(user_answer, list):
             return False
-        return set(str(x) for x in user_answer) == set(str(x) for x in question.answer_key)
+        selected = set()
+        for order in user_answer:
+            text = _option_text(question, order)
+            selected.add((text if text is not None else str(order)).lower().strip())
+        return selected == correct
 
     return False
 
@@ -80,7 +108,7 @@ def generate_tips(wrong_questions: list[ListeningQuestion]) -> list[str]:
             break
     if not tips:
         tips.append(
-            "Great score! Keep practising Sections 3 and 4 — "
+            "Great score! Keep practising Sections 3 and 4 - "
             "academic monologue moves faster and requires tracking multiple ideas."
         )
     return tips
