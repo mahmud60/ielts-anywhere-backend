@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS speaking_attempts (
     examiner_summary            TEXT,
     elevenlabs_session_id       TEXT,
     created_at      TIMESTAMPTZ DEFAULT now(),
+    updated_at      TIMESTAMPTZ,
     completed_at    TIMESTAMPTZ
 );
 """)
