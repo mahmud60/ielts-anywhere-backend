@@ -57,6 +57,7 @@ def _serialize_test(test: ReadingTest) -> dict:
                                 "question_text": q.question_text,
                                 "options": q.options,
                                 "group_label": q.group_label,
+                                "max_selected_options": q.max_selected_options,
                                 # answer_key intentionally absent
                             }
                             for q in g.questions
