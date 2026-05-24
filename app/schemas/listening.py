@@ -38,6 +38,7 @@ class SectionOut(BaseModel):
     part: int
     title: str | None = None
     audio: str | None = None
+    transcript: str | None = None
     subsections: list[SubsectionOut] = []
 
     model_config = {"from_attributes": True, "populate_by_name": True}
