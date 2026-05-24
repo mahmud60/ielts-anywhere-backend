@@ -23,7 +23,6 @@ class ReadingTest(Base):
     __tablename__ = "reading_tests"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source_qid = Column(String, unique=True, nullable=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     task = Column(String, nullable=True)
