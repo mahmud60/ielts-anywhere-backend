@@ -145,7 +145,7 @@ def calculate_band(correct: int, total: int) -> float:
     Official Cambridge IELTS Academic Reading band table,
     scaled proportionally from 40 questions.
     """
-    if total == 0:
+    if total == 0 or correct == 0:
         return 0.0
     scaled = (correct / total) * 40
 

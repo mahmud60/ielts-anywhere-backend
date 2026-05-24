@@ -57,7 +57,7 @@ def score_answer(question: ListeningQuestion, user_answer: Any) -> bool:
 
 
 def calculate_band(correct: int, total: int) -> float:
-    if total == 0:
+    if total == 0 or correct == 0:
         return 0.0
     scaled = (correct / total) * 40
 
