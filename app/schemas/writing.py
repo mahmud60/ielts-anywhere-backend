@@ -38,14 +38,16 @@ class SubmitWritingRequest(BaseModel):
 class TaskScore(BaseModel):
     task_number: int
     task_type: str
-    # The 4 official IELTS writing criteria
-    task_achievement: float       # how well the task is addressed
-    coherence_cohesion: float     # logical flow and linking
-    lexical_resource: float       # vocabulary range and accuracy
-    grammatical_range: float      # grammar range and accuracy
-    band: float                   # average of the 4 criteria
-    feedback: str                 # 2-3 sentence examiner comment
+    task_achievement: float
+    coherence_cohesion: float
+    lexical_resource: float
+    grammatical_range: float
+    band: float
+    feedback: str
     word_count: int
+    task_prompt: str | None = None
+    raw_text: str | None = None
+    errors: dict | None = None
 
 
 class WritingResultOut(BaseModel):

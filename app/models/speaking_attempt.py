@@ -21,5 +21,6 @@ class SpeakingAttempt(Base):
     pronunciation_band = Column(Numeric(2, 1))
     pronunciation_feedback = Column(Text)
     examiner_summary = Column(Text)
+    errors = Column(JSONB)
     elevenlabs_session_id = Column(String)
     completed_at = Column(DateTime(timezone=True))

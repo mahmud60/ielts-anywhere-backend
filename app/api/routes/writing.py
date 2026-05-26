@@ -154,7 +154,7 @@ async def get_attempt(
     # Build structured task scores from stored subscores
     s = attempt.subscores
     task_scores = []
-    for task_key, task_num, task_type in [
+    for task_key, task_num, default_type in [
         ("task1", 1, "task1_academic"),
         ("task2", 2, "task2"),
     ]:
@@ -162,7 +162,7 @@ async def get_attempt(
             t = s[task_key]
             task_scores.append(TaskScore(
                 task_number=task_num,
-                task_type=task_type,
+                task_type=t.get("task_type", default_type),
                 task_achievement=t["task_achievement"],
                 coherence_cohesion=t["coherence_cohesion"],
                 lexical_resource=t["lexical_resource"],
@@ -170,6 +170,9 @@ async def get_attempt(
                 band=t["band"],
                 feedback=t["feedback"],
                 word_count=t.get("word_count", 0),
+                task_prompt=t.get("task_prompt"),
+                raw_text=t.get("raw_text"),
+                errors=t.get("errors"),
             ))
 
     return WritingResultOut(

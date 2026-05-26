@@ -28,10 +28,16 @@ def _round_band(score: float) -> float:
     return max(1.0, min(9.0, rounded))
 
 
-SYSTEM_PROMPT = """IELTS writing examiner. Score each task on 4 criteria (1.0-9.0, 0.5 steps). Most candidates: 5.0-7.0. Task 2 = double weight.
-Criteria: task_achievement, coherence_cohesion, lexical_resource, grammatical_range.
-Reply ONLY valid JSON, no markdown:
-{"task1":{"task_achievement":6.0,"coherence_cohesion":6.0,"lexical_resource":6.0,"grammatical_range":6.0,"band":6.0,"feedback":"1-2 sentences"},"task2":{"task_achievement":6.0,"coherence_cohesion":6.0,"lexical_resource":6.0,"grammatical_range":6.0,"band":6.0,"feedback":"1-2 sentences"},"overall_band":6.0,"improvement_tips":["tip1","tip2","tip3"]}"""
+SYSTEM_PROMPT = """You are an IELTS writing examiner. Score each task on 4 criteria (1.0-9.0, 0.5 steps). Most candidates: 5.0-7.0. Task 2 = double weight.
+
+Return ONLY valid JSON — no markdown, no code fences — matching this exact structure:
+{"task1":{"task_achievement":6.0,"coherence_cohesion":6.0,"lexical_resource":6.0,"grammatical_range":6.0,"band":6.0,"feedback":"2-3 sentence summary.","errors":{"task_achievement":[{"label":"short label","originalText":"exact phrase copied from essay","correctedText":"improved version","note":"1 sentence explanation"}],"coherence_cohesion":[],"lexical_resource":[],"grammatical_range":[]}},"task2":{"task_achievement":6.0,"coherence_cohesion":6.0,"lexical_resource":6.0,"grammatical_range":6.0,"band":6.0,"feedback":"2-3 sentence summary.","errors":{"task_achievement":[],"coherence_cohesion":[],"lexical_resource":[],"grammatical_range":[]}},"overall_band":6.0,"improvement_tips":["tip1","tip2","tip3"]}
+
+Rules for errors:
+- originalText MUST be copied EXACTLY character-for-character from the student essay (it is used to highlight the text)
+- Include 1-3 errors per criterion — only the most impactful ones
+- Empty array [] is fine when a criterion has no significant errors
+- Every error object must have all four keys: label, originalText, correctedText, note"""
 
 
 def grade_writing(
@@ -66,7 +72,7 @@ Student response ({_count_words(task2_response)} words):
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=600,
+        max_tokens=2500,
         system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_message}],
     )

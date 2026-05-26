@@ -281,14 +281,18 @@ _SCORE_SYSTEM = (
     "You are an expert IELTS examiner. Score this speaking test transcript on all 4 criteria.\n"
     "Return ONLY valid JSON with no markdown fences or explanation:\n"
     "{\n"
-    '  "overall_band": <number, 0.5 increments, 1–9>,\n'
-    '  "fluency_coherence": {"band": <number>, "feedback": "<2-3 sentences>"},\n'
-    '  "lexical_resource": {"band": <number>, "feedback": "<2-3 sentences>"},\n'
-    '  "grammatical_range": {"band": <number>, "feedback": "<2-3 sentences>"},\n'
-    '  "pronunciation": {"band": <number>, "feedback": "<2-3 sentences, inferred from transcript patterns>"},\n'
+    '  "overall_band": <number, 0.5 increments, 1-9>,\n'
+    '  "fluency_coherence": {"band": <number>, "feedback": "<2-3 sentences>", "errors": [{"label": "short label", "originalText": "exact phrase from transcript", "correctedText": "improved version", "note": "1 sentence explanation"}]},\n'
+    '  "lexical_resource": {"band": <number>, "feedback": "<2-3 sentences>", "errors": [...]},\n'
+    '  "grammatical_range": {"band": <number>, "feedback": "<2-3 sentences>", "errors": [...]},\n'
+    '  "pronunciation": {"band": <number>, "feedback": "<2-3 sentences>", "errors": [{"label": "short label", "originalText": "word or phrase spoken", "correctedText": "correct pronunciation guide", "note": "pronunciation note"}]},\n'
     '  "examiner_summary": "<2-3 sentence overall summary>"\n'
     "}\n"
-    "overall_band = average of the 4 criteria bands, rounded to nearest 0.5."
+    "Rules for errors:\n"
+    "- For fluency_coherence, lexical_resource, grammatical_range: originalText must be copied EXACTLY from the candidate's transcript lines\n"
+    "- For pronunciation: originalText is the word/phrase; correctedText shows the correct form or stress pattern\n"
+    "- Include 1-3 errors per criterion (most impactful only); empty [] is fine\n"
+    "- overall_band = average of the 4 criteria bands, rounded to nearest 0.5"
 )
 
 
@@ -318,7 +322,7 @@ async def el_submit_speaking(
         client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         msg = await client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=1024,
+            max_tokens=2000,
             system=_SCORE_SYSTEM,
             messages=[{
                 "role": "user",
@@ -343,6 +347,12 @@ async def el_submit_speaking(
     attempt.pronunciation_band = result["pronunciation"]["band"]
     attempt.pronunciation_feedback = result["pronunciation"]["feedback"]
     attempt.examiner_summary = result.get("examiner_summary")
+    attempt.errors = {
+        "fluency_coherence": result["fluency_coherence"].get("errors", []),
+        "lexical_resource": result["lexical_resource"].get("errors", []),
+        "grammatical_range": result["grammatical_range"].get("errors", []),
+        "pronunciation": result["pronunciation"].get("errors", []),
+    }
     if body.elevenlabs_session_id:
         attempt.elevenlabs_session_id = body.elevenlabs_session_id
     attempt.completed_at = datetime.now(timezone.utc)
@@ -367,6 +377,7 @@ async def get_el_speaking_results(
     if not attempt:
         raise HTTPException(404, "Result not found")
 
+    errors = attempt.errors or {}
     return {
         "session_id": str(attempt.id),
         "status": attempt.status,
@@ -374,18 +385,22 @@ async def get_el_speaking_results(
         "fluency_coherence": {
             "band": _to_float(attempt.fluency_coherence_band),
             "feedback": attempt.fluency_coherence_feedback,
+            "errors": errors.get("fluency_coherence", []),
         },
         "lexical_resource": {
             "band": _to_float(attempt.lexical_resource_band),
             "feedback": attempt.lexical_resource_feedback,
+            "errors": errors.get("lexical_resource", []),
         },
         "grammatical_range": {
             "band": _to_float(attempt.grammatical_range_band),
             "feedback": attempt.grammatical_range_feedback,
+            "errors": errors.get("grammatical_range", []),
         },
         "pronunciation": {
             "band": _to_float(attempt.pronunciation_band),
             "feedback": attempt.pronunciation_feedback,
+            "errors": errors.get("pronunciation", []),
         },
         "examiner_summary": attempt.examiner_summary,
         "transcript": attempt.transcript or [],

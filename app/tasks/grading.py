@@ -91,6 +91,10 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
                 "band": t1["band"],
                 "feedback": t1["feedback"],
                 "word_count": _count_words(task_data["task1_response"]),
+                "task_prompt": task_data["task1_prompt"],
+                "task_type": task_data.get("task1_type", "task1_academic"),
+                "raw_text": task_data["task1_response"],
+                "errors": t1.get("errors", {}),
             },
             "task2": {
                 "task_achievement": t2["task_achievement"],
@@ -100,6 +104,10 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
                 "band": t2["band"],
                 "feedback": t2["feedback"],
                 "word_count": _count_words(task_data["task2_response"]),
+                "task_prompt": task_data["task2_prompt"],
+                "task_type": "task2",
+                "raw_text": task_data["task2_response"],
+                "errors": t2.get("errors", {}),
             },
         }
 
