@@ -145,6 +145,8 @@ jobs:
             pip3 install -r requirements.txt --user --quiet --no-cache-dir
             export PATH="$HOME/.local/bin:$PATH"
             kill $(cat /tmp/celery.pid) 2>/dev/null || true
+            sleep 2
+            rm -f /tmp/celery.pid
             nohup celery -A app.tasks.grading.celery_app worker \
               --loglevel=info \
               --concurrency=2 \
