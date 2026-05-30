@@ -108,27 +108,39 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          SECRET_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_REDIS_URL: ${{ secrets.REDIS_URL }}
+          SECRET_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SECRET_R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          SECRET_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          SECRET_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          SECRET_R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          SECRET_R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          SECRET_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SECRET_ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          SECRET_ELEVENLABS_AGENT_ID: ${{ secrets.ELEVENLABS_AGENT_ID }}
         with:
           host: ${{ secrets.VM_IP }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          envs: SECRET_DATABASE_URL,SECRET_REDIS_URL,SECRET_ANTHROPIC_API_KEY,SECRET_R2_ACCOUNT_ID,SECRET_R2_ACCESS_KEY_ID,SECRET_R2_SECRET_ACCESS_KEY,SECRET_R2_BUCKET_NAME,SECRET_R2_PUBLIC_URL,SECRET_RESEND_API_KEY,SECRET_ELEVENLABS_API_KEY,SECRET_ELEVENLABS_AGENT_ID
           script: |
             set -e
             cd /home/MAHMUD/ielts-anywhere-backend
             git pull origin main
 
-            # Overwrite .env with current secrets (GitHub resolves ${{ }} before sending to SSH)
-            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
-            echo "REDIS_URL=${{ secrets.REDIS_URL }}" >> .env
-            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
-            echo "R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}" >> .env
-            echo "R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}" >> .env
-            echo "R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}" >> .env
-            echo "R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}" >> .env
-            echo "R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}" >> .env
-            echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
-            echo "ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}" >> .env
-            echo "ELEVENLABS_AGENT_ID=${{ secrets.ELEVENLABS_AGENT_ID }}" >> .env
+            echo "DATABASE_URL=$SECRET_DATABASE_URL" > .env
+            echo "REDIS_URL=$SECRET_REDIS_URL" >> .env
+            echo "ANTHROPIC_API_KEY=$SECRET_ANTHROPIC_API_KEY" >> .env
+            echo "R2_ACCOUNT_ID=$SECRET_R2_ACCOUNT_ID" >> .env
+            echo "R2_ACCESS_KEY_ID=$SECRET_R2_ACCESS_KEY_ID" >> .env
+            echo "R2_SECRET_ACCESS_KEY=$SECRET_R2_SECRET_ACCESS_KEY" >> .env
+            echo "R2_BUCKET_NAME=$SECRET_R2_BUCKET_NAME" >> .env
+            echo "R2_PUBLIC_URL=$SECRET_R2_PUBLIC_URL" >> .env
+            echo "RESEND_API_KEY=$SECRET_RESEND_API_KEY" >> .env
+            echo "ELEVENLABS_API_KEY=$SECRET_ELEVENLABS_API_KEY" >> .env
+            echo "ELEVENLABS_AGENT_ID=$SECRET_ELEVENLABS_AGENT_ID" >> .env
 
             pip3 install -r requirements.txt --user --quiet --no-cache-dir
             export PATH="$HOME/.local/bin:$PATH"
