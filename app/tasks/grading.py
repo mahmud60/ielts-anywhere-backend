@@ -29,12 +29,16 @@ def _get_db_session():
     """
     Celery workers are synchronous. We use psycopg2 here instead of
     the asyncpg driver used in FastAPI routes.
+    asyncpg uses ?ssl=require; psycopg2 uses sslmode=require.
     """
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    sync_url = settings.DATABASE_URL.replace(
-        "postgresql+asyncpg", "postgresql+psycopg2"
+    sync_url = (
+        settings.DATABASE_URL
+        .replace("postgresql+asyncpg", "postgresql+psycopg2")
+        .replace("?ssl=require", "?sslmode=require")
+        .replace("&ssl=require", "&sslmode=require")
     )
     engine = create_engine(sync_url, pool_pre_ping=True)
     return sessionmaker(engine)()
