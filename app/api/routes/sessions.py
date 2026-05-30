@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.test import TestAttempt, ModuleType
 from app.models.ielts_test import IeltsTest, TestSession, SessionStatus
+from app.models.speaking_attempt import SpeakingAttempt
 from app.schemas.ielts_test import (
     IeltsTestOut, TestSessionOut, StartSessionRequest
 )
@@ -443,12 +444,26 @@ async def get_results(
     tips = {}
     for mod in ["listening", "reading", "writing", "speaking"]:
         attempt_id = getattr(session, f"{mod}_attempt_id")
-        if attempt_id:
-            att = (await db.execute(
-                select(TestAttempt).where(TestAttempt.id == attempt_id)
+        if not attempt_id:
+            continue
+        att = (await db.execute(
+            select(TestAttempt).where(TestAttempt.id == attempt_id)
+        )).scalar_one_or_none()
+        if att:
+            tips[mod] = att.improvement_tips or []
+        elif mod == "speaking":
+            # ElevenLabs speaking stores results in SpeakingAttempt, not TestAttempt
+            sp = (await db.execute(
+                select(SpeakingAttempt).where(SpeakingAttempt.id == attempt_id)
             )).scalar_one_or_none()
-            if att:
-                tips[mod] = att.improvement_tips or []
+            if sp:
+                tips[mod] = []  # SpeakingAttempt has no improvement_tips field
+
+    attempt_ids = {}
+    for mod in ["listening", "reading", "writing", "speaking"]:
+        aid = getattr(session, f"{mod}_attempt_id")
+        if aid:
+            attempt_ids[mod] = str(aid)
 
     return {
         "session_id": str(session.id),
@@ -456,4 +471,5 @@ async def get_results(
         "overall_band": overall,
         "module_bands": bands,
         "improvement_tips": tips,
+        "attempt_ids": attempt_ids,
     }

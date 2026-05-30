@@ -266,6 +266,7 @@ class _ELMessage(BaseModel):
 class _ELSubmitBody(BaseModel):
     transcript: list[_ELMessage]
     elevenlabs_session_id: Optional[str] = None
+    test_session_id: Optional[str] = None
 
 
 def _parse_claude_json(text: str) -> dict:
@@ -356,6 +357,25 @@ async def el_submit_speaking(
     if body.elevenlabs_session_id:
         attempt.elevenlabs_session_id = body.elevenlabs_session_id
     attempt.completed_at = datetime.now(timezone.utc)
+
+    # Link to test session if provided
+    if body.test_session_id:
+        test_session = (await db.execute(
+            select(TestSession).where(
+                TestSession.id == body.test_session_id,
+                TestSession.user_id == str(current_user.id),
+            )
+        )).scalar_one_or_none()
+        if test_session:
+            test_session.speaking_attempt_id = attempt.id
+            bands = dict(test_session.module_bands or {})
+            bands["speaking"] = result["overall_band"]
+            test_session.module_bands = bands
+            if all(test_session.__dict__.get(f"{m}_attempt_id") for m in ["listening", "reading", "writing"]):
+                from app.models.ielts_test import SessionStatus
+                test_session.status = SessionStatus.completed
+                test_session.completed_at = datetime.now(timezone.utc)
+
     await db.commit()
 
     return {"session_id": str(attempt.id), "result": result}
