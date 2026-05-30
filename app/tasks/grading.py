@@ -9,16 +9,19 @@ celery_app = Celery(
     backend=settings.REDIS_URL,
 )
 
+_use_ssl = settings.REDIS_URL.startswith("rediss://")
+_ssl_opts = {"ssl_cert_reqs": ssl.CERT_NONE} if _use_ssl else {}
+
 celery_app.conf.update(
     worker_pool="solo" if platform.system() == "Windows" else "prefork",
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
     timezone="UTC",
-    task_acks_late=True,          # only ack after task completes
-    task_reject_on_worker_lost=True,  # requeue if worker crashes
-    broker_use_ssl={"ssl_cert_reqs": ssl.CERT_NONE},        # ✅ add this
-    redis_backend_use_ssl={"ssl_cert_reqs": ssl.CERT_NONE}, # ✅ add this
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    broker_use_ssl=_ssl_opts,
+    redis_backend_use_ssl=_ssl_opts,
 )
 
 
