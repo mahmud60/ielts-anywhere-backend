@@ -18,6 +18,46 @@ from app.tasks.grading import grade_writing_task
 router = APIRouter(prefix="/writing", tags=["writing"])
 
 
+@router.get("/tests")
+async def list_writing_tests(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(WritingTest)
+        .where(WritingTest.is_active == True)
+        .options(selectinload(WritingTest.tasks))
+        .order_by(WritingTest.id)
+    )
+    tests = result.scalars().all()
+    return [
+        {
+            "id": str(t.id),
+            "title": t.title,
+            "test_type": t.test_type,
+            "is_demo": t.is_demo,
+            "task_count": len(t.tasks),
+        }
+        for t in tests
+    ]
+
+
+@router.get("/tests/{test_id}", response_model=WritingTestOut)
+async def get_writing_test(
+    test_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    test = (await db.execute(
+        select(WritingTest)
+        .where(WritingTest.id == test_id, WritingTest.is_active == True)
+        .options(selectinload(WritingTest.tasks))
+    )).scalar_one_or_none()
+    if not test:
+        raise HTTPException(404, "Writing test not found")
+    return test
+
+
 @router.get("/for-session/{session_id}", response_model=WritingTestOut)
 async def get_test_for_session(
     session_id: str,
