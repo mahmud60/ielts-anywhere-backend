@@ -346,3 +346,96 @@ def _notify_module_graded(attempt_id: str) -> None:
         pass
     finally:
         db.close()
+
+@celery_app.task(bind=True, max_retries=1, default_retry_delay=30)
+def generate_question_tips_task(self, test_id: str, module: str, overwrite: bool = False):
+    """
+    Pre-generate wrong_answer_tip for every question in a listening or reading test.
+    Called once by admin after uploading a test.  Each question costs ~120 Haiku tokens.
+    Questions that already have a tip are skipped unless overwrite=True.
+    """
+    from app.services.question_tips_generator import (
+        generate_listening_question_tip,
+        generate_reading_question_tip,
+    )
+
+    db = _get_db_session()
+    try:
+        if module == "listening":
+            from app.models.listening import ListeningTest, ListeningSection, ListeningSubsection, ListeningQuestion
+            from sqlalchemy.orm import joinedload
+
+            test = db.get(ListeningTest, test_id)
+            if not test:
+                return
+
+            # Load full tree
+            from sqlalchemy import select
+            sections = db.execute(
+                select(ListeningSection).where(ListeningSection.test_id == test_id)
+            ).scalars().all()
+            section_ids = [s.id for s in sections]
+
+            subsections = db.execute(
+                select(ListeningSubsection).where(ListeningSubsection.section_id.in_(section_ids))
+            ).scalars().all()
+            sub_ids = [s.id for s in subsections]
+
+            questions = db.execute(
+                select(ListeningQuestion).where(ListeningQuestion.subsection_id.in_(sub_ids))
+            ).scalars().all()
+
+            updated = 0
+            for q in questions:
+                if q.wrong_answer_tip and not overwrite:
+                    continue
+                tip = generate_listening_question_tip(
+                    q.question_type, q.stem or "", q.answer_key
+                )
+                if tip:
+                    q.wrong_answer_tip = tip
+                    updated += 1
+
+            db.commit()
+
+        elif module == "reading":
+            from app.models.reading import ReadingTest, ReadingPassage, ReadingQuestionGroup, ReadingQuestion
+            from sqlalchemy import select
+
+            passages = db.execute(
+                select(ReadingPassage).where(ReadingPassage.test_id == test_id)
+            ).scalars().all()
+            passage_ids = [p.id for p in passages]
+
+            groups = db.execute(
+                select(ReadingQuestionGroup).where(ReadingQuestionGroup.passage_id.in_(passage_ids))
+            ).scalars().all()
+            group_map = {str(g.id): g for g in groups}
+            group_ids = [g.id for g in groups]
+
+            questions = db.execute(
+                select(ReadingQuestion).where(ReadingQuestion.group_id.in_(group_ids))
+            ).scalars().all()
+
+            updated = 0
+            for q in questions:
+                if q.wrong_answer_tip and not overwrite:
+                    continue
+                group = group_map.get(str(q.group_id))
+                tip = generate_reading_question_tip(
+                    question_type=group.question_type.value if group else "mcq",
+                    question_text=q.question_text or "",
+                    answer_key=q.answer_key,
+                    instruction=(group.instruction or "") if group else "",
+                )
+                if tip:
+                    q.wrong_answer_tip = tip
+                    updated += 1
+
+            db.commit()
+
+    except Exception as exc:
+        db.close()
+        raise self.retry(exc=exc)
+    finally:
+        db.close()

@@ -18,6 +18,7 @@ from app.api.routes.auth import get_current_user
 from app.services.reading_scorer import score_answer, calculate_band, generate_tips
 from app.services.feedback_gating import should_generate_llm_feedback
 from app.tasks.grading import generate_feedback_task
+from app.models.user import SubscriptionTier
 
 router = APIRouter(prefix="/reading", tags=["reading"])
 
@@ -168,6 +169,7 @@ async def submit_reading(
     passage_results: list[PassageResult] = []
     question_results: list[QuestionResult] = []
     wrong_questions: list[ReadingQuestion] = []
+    is_pro = current_user.subscription == SubscriptionTier.pro
 
     for passage in test.passages:
         p_correct = 0
@@ -187,6 +189,7 @@ async def submit_reading(
                     wrong_questions.append(question)
                 p_total += 1
 
+                has_tip = bool(not is_correct and question.wrong_answer_tip)
                 question_results.append(QuestionResult(
                     question_id=qid,
                     question_type=group.question_type.value,
@@ -194,7 +197,8 @@ async def submit_reading(
                     user_answer=user_answer,
                     correct_answer=question.answer_key,
                     is_correct=is_correct,
-                    tip=question.wrong_answer_tip if not is_correct else None,
+                    tip=(question.wrong_answer_tip if (is_pro and not is_correct) else None),
+                    has_tip=has_tip,
                 ))
 
         passage_results.append(PassageResult(
@@ -316,6 +320,29 @@ async def get_attempt(
     if not attempt:
         raise HTTPException(404, "Attempt not found")
     sc = attempt.subscores or {}
+    is_pro = current_user.subscription == SubscriptionTier.pro
+
+    # Reload current tips from DB so upgrades and newly generated tips show immediately
+    stored_results = attempt.question_results or []
+    wrong_qids = [qr["question_id"] for qr in stored_results if not qr.get("is_correct") if qr.get("question_id")]
+    tip_map: dict[str, str] = {}
+    if wrong_qids:
+        from app.models.reading import ReadingQuestion
+        rows = (await db.execute(
+            select(ReadingQuestion.id, ReadingQuestion.wrong_answer_tip)
+            .where(ReadingQuestion.id.in_(wrong_qids))
+        )).all()
+        tip_map = {str(r.id): r.wrong_answer_tip for r in rows if r.wrong_answer_tip}
+
+    enriched_results = [
+        {
+            **qr,
+            "tip": (tip_map.get(str(qr.get("question_id"))) if is_pro else None),
+            "has_tip": bool(tip_map.get(str(qr.get("question_id")))),
+        }
+        for qr in stored_results
+    ]
+
     return {
         "attempt_id": str(attempt.id),
         "test_id": attempt.test_id,
@@ -324,7 +351,7 @@ async def get_attempt(
         "total": sc.get("total", 0),
         "overall_band": attempt.overall_band,
         "passage_results": sc.get("passages", []),
-        "question_results": attempt.question_results or [],
+        "question_results": enriched_results,
         "improvement_tips": attempt.improvement_tips or [],
         "created_at": attempt.created_at.isoformat() if attempt.created_at else None,
     }

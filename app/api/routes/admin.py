@@ -521,6 +521,17 @@ async def delete_question(
     await db.flush()
     return {"deleted": question_id}
 
+@router.post("/listening/tests/{test_id}/generate-tips", status_code=202)
+async def generate_listening_tips(
+    test_id: str,
+    overwrite: bool = False,
+    _: User = Depends(require_admin),
+):
+    from app.tasks.grading import generate_question_tips_task
+    generate_question_tips_task.delay(test_id, "listening", overwrite)
+    return {"status": "queued", "test_id": test_id, "module": "listening"}
+
+
 # ── Reading management ────────────────────────────────────────────────────────
 
 from app.models.reading import (
@@ -844,6 +855,17 @@ async def delete_reading_test(
     await db.delete(test)
     await db.flush()
     return {"deleted": test_id}
+
+@router.post("/reading/tests/{test_id}/generate-tips", status_code=202)
+async def generate_reading_tips(
+    test_id: str,
+    overwrite: bool = False,
+    _: User = Depends(require_admin),
+):
+    from app.tasks.grading import generate_question_tips_task
+    generate_question_tips_task.delay(test_id, "reading", overwrite)
+    return {"status": "queued", "test_id": test_id, "module": "reading"}
+
 
 #---Writing Management---------------------------------------------------------------------------
 

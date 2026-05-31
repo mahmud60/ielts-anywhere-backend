@@ -61,6 +61,7 @@ class QuestionResult(BaseModel):
     correct_answer: Any
     is_correct: bool
     tip: str | None = None
+    has_tip: bool = False
 
 
 class ListeningResultOut(BaseModel):
