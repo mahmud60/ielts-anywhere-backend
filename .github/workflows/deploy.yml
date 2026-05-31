@@ -84,7 +84,7 @@ jobs:
             --region=${{ env.REGION }} \
             --platform=managed \
             --allow-unauthenticated \
-            --min-instances=0 \
+            --min-instances=1 \
             --max-instances=10 \
             --memory=512Mi \
             --cpu=1 \
