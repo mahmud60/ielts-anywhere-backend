@@ -125,6 +125,7 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
         attempt.subscores = subscores
         attempt.ai_feedback = f"Task 1: {t1['feedback']} Task 2: {t2['feedback']}"
         attempt.improvement_tips = result["improvement_tips"]
+        _record_feedback_state(db, str(attempt.user_id), "writing", result["overall_band"], attempt_id)
         db.commit()
 
         _notify_module_graded(attempt_id)
@@ -193,6 +194,7 @@ def grade_speaking_task(self, attempt_id: str, part_responses: list):
             for i, k in enumerate(["part1", "part2", "part3"])
         ])
         attempt.improvement_tips = result["improvement_tips"]
+        _record_feedback_state(db, str(attempt.user_id), "speaking", result["overall_band"], attempt_id)
         db.commit()
 
         _notify_module_graded(attempt_id)
@@ -205,6 +207,94 @@ def grade_speaking_task(self, attempt_id: str, part_responses: list):
                 db.commit()
         except Exception:
             pass
+        db.close()
+        raise self.retry(exc=exc)
+    finally:
+        db.close()
+
+def _record_feedback_state(db, user_id: str, module: str, band: float, attempt_id: str) -> None:
+    """
+    Persist the band and attempt ID into user.feedback_state so the gating
+    logic can compare on the next submit.
+    Called inside existing Celery tasks — no extra commit needed.
+    """
+    from app.models.user import User
+    from sqlalchemy import func, select
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.models.test import TestAttempt
+
+    user = db.get(User, user_id)
+    if not user:
+        return
+
+    count = db.execute(
+        select(func.count()).where(
+            TestAttempt.user_id == user_id,
+            TestAttempt.module == module,
+        )
+    ).scalar() or 0
+
+    state = dict(user.feedback_state or {})
+    state[module] = {
+        "last_band": band,
+        "last_attempt_id": attempt_id,
+        "last_attempt_number": count,
+    }
+    user.feedback_state = state
+    flag_modified(user, "feedback_state")
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=10)
+def generate_feedback_task(self, attempt_id: str, module: str, feedback_data: dict):
+    """
+    Generates LLM-powered improvement tips for a listening or reading attempt.
+    Only queued when the feedback gate passes (first attempt, band delta >= 0.5,
+    or 5+ attempts since last LLM feedback).
+
+    On success: overwrites attempt.improvement_tips with Haiku-generated tips
+    and records the new feedback_state on the user.
+    On failure: silently retries twice — the rule-based tips already on the
+    attempt remain visible to the user.
+    """
+    from app.models.test import TestAttempt
+    from app.models.user import User
+    from app.services.feedback_generator import generate_feedback
+    from sqlalchemy import func, select
+    from sqlalchemy.orm.attributes import flag_modified
+
+    db = _get_db_session()
+    try:
+        attempt = db.get(TestAttempt, attempt_id)
+        if not attempt:
+            return
+
+        tips = generate_feedback(module, feedback_data)
+        if not tips:
+            return  # keep existing rule-based tips
+
+        attempt.improvement_tips = tips
+
+        count = db.execute(
+            select(func.count()).where(
+                TestAttempt.user_id == attempt.user_id,
+                TestAttempt.module == module,
+            )
+        ).scalar() or 0
+
+        user = db.get(User, attempt.user_id)
+        if user:
+            state = dict(user.feedback_state or {})
+            state[module] = {
+                "last_band": feedback_data.get("band"),
+                "last_attempt_id": attempt_id,
+                "last_attempt_number": count,
+            }
+            user.feedback_state = state
+            flag_modified(user, "feedback_state")
+
+        db.commit()
+
+    except Exception as exc:
         db.close()
         raise self.retry(exc=exc)
     finally:

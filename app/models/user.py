@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, Enum
+from sqlalchemy import Column, String, Boolean, Enum, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -24,6 +24,7 @@ class User(Base):
         Enum(SubscriptionTier), default=SubscriptionTier.free
     )
     lemonsqueezy_customer_id = Column(String, unique=True, nullable=True)
+    feedback_state = Column(JSON, nullable=True)
     
     test_attempts = relationship("TestAttempt", back_populates="user")
     sessions = relationship("TestSession", back_populates="user")

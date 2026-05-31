@@ -1,3 +1,5 @@
+from collections import Counter
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,6 +15,8 @@ from app.schemas.listening import (
     SubmitListeningRequest,
     ListeningResultOut, QuestionResult,
 )
+from app.services.feedback_gating import should_generate_llm_feedback
+from app.tasks.grading import generate_feedback_task
 from app.api.routes.auth import get_current_user
 from app.services.listening_scorer import score_answer, calculate_band, generate_tips
 
@@ -203,6 +207,26 @@ async def submit_listening(
     )
     db.add(attempt)
     await db.flush()
+
+    # Queue LLM feedback if the gate passes (first attempt, score changed, or 5+ since last)
+    if await should_generate_llm_feedback(db, current_user.id, "listening", overall_band):
+        wrong_by_type = dict(Counter(q.question_type for q in wrong_questions))
+        feedback_data = {
+            "band": overall_band,
+            "total_wrong": len(wrong_questions),
+            "total_questions": total_questions,
+            "wrong_by_type": wrong_by_type,
+            "section_scores": section_scores,
+            "sample_wrong": [
+                {
+                    "type": q.question_type,
+                    "stem": (q.stem or "")[:120],
+                    "correct": str(q.answer_key)[:60],
+                }
+                for q in wrong_questions[:5]
+            ],
+        }
+        generate_feedback_task.delay(str(attempt.id), "listening", feedback_data)
 
     return ListeningResultOut(
         attempt_id=attempt.id,

@@ -1,3 +1,5 @@
+from collections import Counter
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -14,6 +16,8 @@ from app.schemas.reading import (
 )
 from app.api.routes.auth import get_current_user
 from app.services.reading_scorer import score_answer, calculate_band, generate_tips
+from app.services.feedback_gating import should_generate_llm_feedback
+from app.tasks.grading import generate_feedback_task
 
 router = APIRouter(prefix="/reading", tags=["reading"])
 
@@ -233,6 +237,29 @@ async def submit_reading(
     )
     db.add(attempt)
     await db.flush()
+
+    # Queue LLM feedback if the gate passes (first attempt, score changed, or 5+ since last)
+    if await should_generate_llm_feedback(db, current_user.id, "reading", overall_band):
+        wrong_by_type = dict(Counter(q.group.question_type.value for q in wrong_questions))
+        feedback_data = {
+            "band": overall_band,
+            "total_wrong": len(wrong_questions),
+            "total_questions": total_questions,
+            "wrong_by_type": wrong_by_type,
+            "passage_scores": [
+                {"number": p.passage_number, "band": p.band}
+                for p in passage_results
+            ],
+            "sample_wrong": [
+                {
+                    "type": q.group.question_type.value,
+                    "text": (q.question_text or "")[:120],
+                    "correct": str(q.answer_key)[:60],
+                }
+                for q in wrong_questions[:5]
+            ],
+        }
+        generate_feedback_task.delay(str(attempt.id), "reading", feedback_data)
 
     return ReadingResultOut(
         attempt_id=attempt.id,
