@@ -856,6 +856,23 @@ async def delete_reading_test(
     await db.flush()
     return {"deleted": test_id}
 
+@router.patch("/reading/tests/{test_id}")
+async def update_reading_test(
+    test_id: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    test = (await db.execute(select(ReadingTest).where(ReadingTest.id == test_id))).scalar_one_or_none()
+    if not test:
+        raise HTTPException(404, "Test not found")
+    for field in ["title", "test_type", "is_active", "is_demo"]:
+        if field in body:
+            setattr(test, field, body[field])
+    await db.flush()
+    return {"id": str(test.id), "title": test.title, "is_active": test.is_active}
+
+
 @router.post("/reading/tests/{test_id}/generate-tips", status_code=202)
 async def generate_reading_tips(
     test_id: str,
