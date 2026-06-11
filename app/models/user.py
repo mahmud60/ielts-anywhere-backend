@@ -28,3 +28,4 @@ class User(Base):
     
     test_attempts = relationship("TestAttempt", back_populates="user")
     sessions = relationship("TestSession", back_populates="user")
+    affiliate = relationship("Affiliate", back_populates="user", uselist=False)

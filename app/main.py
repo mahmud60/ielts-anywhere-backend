@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.api.routes import auth, listening, reading, writing, speaking, sessions, admin, payments, dashboard, learn
+from app.api.routes import affiliates
 import asyncio
 import traceback
 from datetime import datetime, timezone, timedelta
@@ -67,6 +68,7 @@ app.include_router(admin.router)
 app.include_router(payments.router)
 app.include_router(dashboard.router)
 app.include_router(learn.router)
+app.include_router(affiliates.router)
 
 @app.get("/health")
 async def health():
