@@ -9,7 +9,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.db.base import Base
-from app.models import user, test, listening, ielts_test
+from app.models import user, test, listening, ielts_test, affiliate
 
 from app.core.config import settings
 
