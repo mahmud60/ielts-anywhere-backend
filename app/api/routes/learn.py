@@ -7,7 +7,7 @@ based on the user's recent writing/speaking subscores.
 import json
 import re
 import anthropic
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -64,8 +64,18 @@ def _require_pro(user: User):
         raise HTTPException(403, "Pro subscription required.")
 
 
+_BN_NOTE_VOCAB = """
+IMPORTANT: Write ALL explanatory text in Bengali (বাংলা): definition, usage_tip, phrase meaning, study_tip.
+Keep in English: word itself, part_of_speech, ielts_topics, example_sentence, gap_fill, gap_fill_answer, collocations, phrase.phrase, phrase.register, phrase.example, focus_areas."""
+
+_BN_NOTE_GRAMMAR = """
+IMPORTANT: Write ALL explanatory text in Bengali (বাংলা): explanation, transform_task instruction text (but keep the English sentence to transform), common_error, ielts_tip, when_to_use, study_tip.
+Keep in English: structure name, name field, example sentence, model_answer, active_example, passive_example, focus_areas."""
+
+
 @router.post("/vocabulary")
 async def get_vocabulary_exercises(
+    lang: str = Query("en"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -87,7 +97,8 @@ async def get_vocabulary_exercises(
         else "Focus on sophisticated synonyms, idiomatic academic phrases, and precise collocations."
     )
 
-    prompt = f"""IELTS vocab exercises for lexical_resource band {lex_score:.1f} ({level}). {focus_hint}
+    lang_note = _BN_NOTE_VOCAB if lang == "bn" else ""
+    prompt = f"""IELTS vocab exercises for lexical_resource band {lex_score:.1f} ({level}). {focus_hint}{lang_note}
 Reply ONLY valid JSON, no markdown. Generate 4 exercises and 3 phrases:
 {{"focus_areas":["area1","area2"],"exercises":[{{"word":"...","part_of_speech":"...","definition":"...","ielts_topics":["..."],"example_sentence":"...","gap_fill":"sentence with _____","gap_fill_answer":"...","collocations":["..."],"usage_tip":"..."}}],"phrases":[{{"phrase":"...","meaning":"...","example":"...","register":"..."}}],"study_tip":"..."}}"""
 
@@ -104,6 +115,7 @@ Reply ONLY valid JSON, no markdown. Generate 4 exercises and 3 phrases:
 
 @router.post("/grammar")
 async def get_grammar_exercises(
+    lang: str = Query("en"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -126,7 +138,8 @@ async def get_grammar_exercises(
              "and sophisticated use of modal verbs."
     )
 
-    prompt = f"""IELTS grammar exercises for grammatical_range band {gram_score:.1f} ({level}). {focus_hint}
+    lang_note = _BN_NOTE_GRAMMAR if lang == "bn" else ""
+    prompt = f"""IELTS grammar exercises for grammatical_range band {gram_score:.1f} ({level}). {focus_hint}{lang_note}
 Reply ONLY valid JSON, no markdown. Generate 4 exercises and 2 patterns:
 {{"focus_areas":["area1","area2"],"exercises":[{{"structure":"...","explanation":"...","example":"...","transform_task":"...","model_answer":"...","common_error":"...","ielts_tip":"..."}}],"patterns":[{{"name":"...","when_to_use":"...","active_example":"...","passive_example":"...","ielts_tip":"..."}}],"study_tip":"..."}}"""
 

@@ -1,6 +1,59 @@
-from fastapi import APIRouter, Depends
+import json
+import re
+import anthropic
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.config import settings
+
+_ai = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+
+def _clean_json(raw: str) -> str:
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    return raw.strip()
+
+
+async def _translate_tips(tips_by_module: dict, vocab_tips: list) -> tuple[dict, list]:
+    """Batch-translate all tips to Bengali using a single Claude Haiku call."""
+    all_tips: list[str] = []
+    module_ranges: dict[str, tuple[int, int]] = {}
+    for mod, tips in tips_by_module.items():
+        start = len(all_tips)
+        all_tips.extend(tips)
+        module_ranges[mod] = (start, len(all_tips))
+    vocab_start = len(all_tips)
+    all_tips.extend(vocab_tips)
+
+    if not all_tips:
+        return tips_by_module, vocab_tips
+
+    numbered = "\n".join(f"{i+1}. {tip}" for i, tip in enumerate(all_tips))
+    prompt = f"""Translate the following IELTS improvement tips into Bengali (বাংলা).
+Keep IELTS-specific terms (band scores like 7.0, module names like Writing/Speaking/Reading/Listening, grammatical terms) in English.
+Reply ONLY with a JSON array of translated strings in the same order, no markdown:
+
+{numbered}"""
+
+    try:
+        resp = await _ai.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        translated: list[str] = json.loads(_clean_json(resp.content[0].text))
+        if len(translated) != len(all_tips):
+            return tips_by_module, vocab_tips
+    except Exception:
+        return tips_by_module, vocab_tips
+
+    new_by_module = {}
+    for mod, (start, end) in module_ranges.items():
+        new_by_module[mod] = translated[start:end]
+    new_vocab = translated[vocab_start:]
+    return new_by_module, new_vocab
 
 from app.db.session import get_db
 from app.models.user import User, SubscriptionTier
@@ -49,6 +102,7 @@ def _agg_subscores(attempts: list[TestAttempt]) -> dict:
 
 @router.get("")
 async def get_dashboard(
+    lang: str = Query("en"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -181,12 +235,17 @@ async def get_dashboard(
                     if any(kw in lower for kw in _VOCAB_KEYWORDS) and tip not in vocab_tips:
                         vocab_tips.append(tip)
 
+    final_tips = tips_by_module
+    final_vocab = vocab_tips[:6]
+    if lang == "bn":
+        final_tips, final_vocab = await _translate_tips(tips_by_module, vocab_tips[:6])
+
     data.update({
         "module_avgs": module_avgs,
         "weak_modules": weak_modules,
         "weakness_by_module": weakness_by_module,
-        "tips_by_module": tips_by_module,
-        "vocab_tips": vocab_tips[:6],
+        "tips_by_module": final_tips,
+        "vocab_tips": final_vocab,
     })
 
     return data
