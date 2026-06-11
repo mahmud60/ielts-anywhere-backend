@@ -4,62 +4,13 @@ import anthropic
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.core.config import settings
-
-_ai = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-
-
-def _clean_json(raw: str) -> str:
-    raw = raw.strip()
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    return raw.strip()
-
-
-async def _translate_tips(tips_by_module: dict, vocab_tips: list) -> tuple[dict, list]:
-    """Batch-translate all tips to Bengali using a single Claude Haiku call."""
-    all_tips: list[str] = []
-    module_ranges: dict[str, tuple[int, int]] = {}
-    for mod, tips in tips_by_module.items():
-        start = len(all_tips)
-        all_tips.extend(tips)
-        module_ranges[mod] = (start, len(all_tips))
-    vocab_start = len(all_tips)
-    all_tips.extend(vocab_tips)
-
-    if not all_tips:
-        return tips_by_module, vocab_tips
-
-    numbered = "\n".join(f"{i+1}. {tip}" for i, tip in enumerate(all_tips))
-    prompt = f"""Translate the following IELTS improvement tips into Bengali (বাংলা).
-Keep IELTS-specific terms (band scores like 7.0, module names like Writing/Speaking/Reading/Listening, grammatical terms) in English.
-Reply ONLY with a JSON array of translated strings in the same order, no markdown:
-
-{numbered}"""
-
-    try:
-        resp = await _ai.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=2048,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        translated: list[str] = json.loads(_clean_json(resp.content[0].text))
-        if len(translated) != len(all_tips):
-            return tips_by_module, vocab_tips
-    except Exception:
-        return tips_by_module, vocab_tips
-
-    new_by_module = {}
-    for mod, (start, end) in module_ranges.items():
-        new_by_module[mod] = translated[start:end]
-    new_vocab = translated[vocab_start:]
-    return new_by_module, new_vocab
 
 from app.db.session import get_db
 from app.models.user import User, SubscriptionTier
 from app.models.test import TestAttempt, ModuleType, GradingStatus
 from app.models.ielts_test import IeltsTest, TestSession, SessionStatus
 from app.api.routes.auth import get_current_user
+from app.core.config import settings
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -83,10 +34,6 @@ def _session_overall(session: TestSession) -> float | None:
 
 
 def _agg_subscores(attempts: list[TestAttempt]) -> dict:
-    """
-    Aggregate criteria scores across all attempts that have subscores.
-    Returns { criterion_key: avg_score }.
-    """
     buckets: dict[str, list[float]] = {}
     for a in attempts:
         if not a.subscores:
@@ -100,13 +47,59 @@ def _agg_subscores(attempts: list[TestAttempt]) -> dict:
     return {k: round(sum(v) / len(v) * 2) / 2 for k, v in buckets.items() if v}
 
 
+def _clean_json(raw: str) -> str:
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    return raw.strip()
+
+
+async def _translate_tips(tips_by_module: dict, vocab_tips: list) -> tuple[dict, list]:
+    """Batch-translate stored tips to Bengali. Falls back to originals on any error."""
+    all_tips: list[str] = []
+    module_ranges: dict[str, tuple[int, int]] = {}
+    for mod, tips in tips_by_module.items():
+        start = len(all_tips)
+        all_tips.extend(tips)
+        module_ranges[mod] = (start, len(all_tips))
+    vocab_start = len(all_tips)
+    all_tips.extend(vocab_tips)
+
+    if not all_tips:
+        return tips_by_module, vocab_tips
+
+    numbered = "\n".join(f"{i+1}. {tip}" for i, tip in enumerate(all_tips))
+    prompt = (
+        "Translate the following IELTS improvement tips into Bengali (বাংলা).\n"
+        "Keep IELTS-specific terms (band scores, module names Writing/Speaking/Reading/Listening, "
+        "grammatical terms) in English.\n"
+        "Reply ONLY with a JSON array of translated strings in the same order, no markdown:\n\n"
+        f"{numbered}"
+    )
+
+    try:
+        ai = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        resp = await ai.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        translated: list[str] = json.loads(_clean_json(resp.content[0].text))
+        if not isinstance(translated, list) or len(translated) != len(all_tips):
+            return tips_by_module, vocab_tips
+    except Exception:
+        return tips_by_module, vocab_tips
+
+    new_by_module = {mod: translated[start:end] for mod, (start, end) in module_ranges.items()}
+    return new_by_module, translated[vocab_start:]
+
+
 @router.get("")
 async def get_dashboard(
     lang: str = Query("en"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # All completed sessions, newest first (cap at 20 for history chart)
     sessions = (await db.execute(
         select(TestSession)
         .where(
@@ -122,7 +115,6 @@ async def get_dashboard(
     best_overall = max(overalls) if overalls else None
     avg_overall = round(sum(overalls) / len(overalls) * 2) / 2 if overalls else None
 
-    # Enrich recent 5 sessions with test title
     recent_sessions = []
     for s in sessions[:5]:
         ielts_test = (await db.execute(
@@ -137,14 +129,13 @@ async def get_dashboard(
             "module_bands": bands,
         })
 
-    # Lightweight history for the progress chart (all 20)
     score_history = [
         {
             "completed_at": s.completed_at.isoformat() if s.completed_at else None,
             "overall_band": _session_overall(s),
             "module_bands": s.module_bands or {},
         }
-        for s in reversed(sessions)   # oldest → newest for chart rendering
+        for s in reversed(sessions)
         if _session_overall(s) is not None
     ]
 
@@ -162,7 +153,6 @@ async def get_dashboard(
 
     # ── Pro-only analytics ────────────────────────────────────────────────────
 
-    # Module-level averages from session history
     module_avgs = {}
     for mod in _MODULES:
         scores = [
@@ -180,8 +170,6 @@ async def get_dashboard(
         if score < overall_avg
     ]
 
-    # ── Criterion-level weakness detection ───────────────────────────────────
-    # Pull all completed writing + speaking attempts (richer subscores than L/R)
     all_attempts = (await db.execute(
         select(TestAttempt)
         .where(
@@ -193,7 +181,6 @@ async def get_dashboard(
         .limit(20)
     )).scalars().all()
 
-    # Per-module criterion averages
     weakness_by_module: dict[str, dict] = {}
     for mod in ("writing", "speaking"):
         mod_attempts = [a for a in all_attempts if a.module.value == mod]
@@ -213,7 +200,6 @@ async def get_dashboard(
             "weakest_score": sorted_criteria[0][1] if sorted_criteria else None,
         }
 
-    # Improvement tips from recent 3 sessions
     tips_by_module: dict[str, list[str]] = {m: [] for m in _MODULES}
     vocab_tips: list[str] = []
 

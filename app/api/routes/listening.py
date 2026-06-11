@@ -1,6 +1,9 @@
+import json
+import re
+import anthropic
 from collections import Counter
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -20,8 +23,43 @@ from app.tasks.grading import generate_feedback_task
 from app.api.routes.auth import get_current_user
 from app.services.listening_scorer import score_answer, calculate_band, generate_tips
 from app.models.user import SubscriptionTier
+from app.core.config import settings
 
 router = APIRouter(prefix="/listening", tags=["listening"])
+
+
+def _clean_json(raw: str) -> str:
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    return raw.strip()
+
+
+async def _translate_tips(tips: list[str]) -> list[str]:
+    """Translate a flat list of tips to Bengali. Falls back to originals on error."""
+    if not tips:
+        return tips
+    numbered = "\n".join(f"{i+1}. {tip}" for i, tip in enumerate(tips))
+    prompt = (
+        "Translate the following IELTS improvement tips into Bengali (বাংলা).\n"
+        "Keep IELTS-specific terms (band scores, module names Writing/Speaking/Reading/Listening, "
+        "grammatical terms) in English.\n"
+        "Reply ONLY with a JSON array of translated strings in the same order, no markdown:\n\n"
+        f"{numbered}"
+    )
+    try:
+        ai = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        resp = await ai.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        translated = json.loads(_clean_json(resp.content[0].text))
+        if isinstance(translated, list) and len(translated) == len(tips):
+            return translated
+    except Exception:
+        pass
+    return tips
 
 
 def _load_options():
@@ -275,6 +313,7 @@ async def get_attempts(
 @router.get("/attempts/{attempt_id}")
 async def get_attempt(
     attempt_id: str,
+    lang: str = Query("en"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -311,6 +350,9 @@ async def get_attempt(
         for qr in stored_results
     ]
 
+    raw_tips = attempt.improvement_tips or []
+    tips = await _translate_tips(raw_tips) if lang == "bn" else raw_tips
+
     return {
         "attempt_id": str(attempt.id),
         "test_id": attempt.test_id,
@@ -320,6 +362,6 @@ async def get_attempt(
         "overall_band": attempt.overall_band,
         "section_scores": sc.get("sections", {}),
         "question_results": enriched_results,
-        "improvement_tips": attempt.improvement_tips or [],
+        "improvement_tips": tips,
         "created_at": attempt.created_at.isoformat() if attempt.created_at else None,
     }
