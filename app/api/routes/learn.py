@@ -6,6 +6,7 @@ based on the user's recent writing/speaking subscores.
 
 import json
 import re
+from typing import Optional
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from sqlalchemy import select
 from app.db.session import get_db
 from app.models.user import User, SubscriptionTier
 from app.models.test import TestAttempt, ModuleType, GradingStatus
+from app.models.vocabulary import VocabularyWord
 from app.api.routes.auth import get_current_user
 from app.core.config import settings
 
@@ -71,6 +73,45 @@ Keep in English: word itself, part_of_speech, ielts_topics, example_sentence, ga
 _BN_NOTE_GRAMMAR = """
 IMPORTANT: Write ALL explanatory text in Bengali (বাংলা): explanation, transform_task instruction text (but keep the English sentence to transform), common_error, ielts_tip, when_to_use, study_tip.
 Keep in English: structure name, name field, example sentence, model_answer, active_example, passive_example, focus_areas."""
+
+
+@router.get("/vocabulary/words")
+async def list_vocabulary_words(
+    module: Optional[str] = Query(None),
+    topic: Optional[str] = Query(None),
+    limit: int = Query(1000, le=1000),
+    offset: int = Query(0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return vocabulary words from the seeded bank. Pro only."""
+    _require_pro(current_user)
+
+    q = select(VocabularyWord)
+    if module and module.lower() != "all":
+        q = q.where(VocabularyWord.module == module)
+    if topic and topic.lower() != "all":
+        q = q.where(VocabularyWord.topic == topic)
+    q = q.order_by(VocabularyWord.word).offset(offset).limit(limit)
+
+    result = await db.execute(q)
+    words = result.scalars().all()
+
+    return [
+        {
+            "id": w.id,
+            "word": w.word,
+            "module": w.module,
+            "topic": w.topic,
+            "band": w.band,
+            "partOfSpeech": w.part_of_speech,
+            "definition": w.definition,
+            "example": w.example,
+            "mnemonic": w.mnemonic,
+            "collocations": w.collocations or [],
+        }
+        for w in words
+    ]
 
 
 @router.post("/vocabulary")

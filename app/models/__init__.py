@@ -1,3 +1,4 @@
+from app.models.affiliate import Affiliate, AffiliateReferral
 from app.models.user import User
 from app.models.test import TestAttempt
 from app.models.listening import ListeningTest, ListeningSection, ListeningSubsection, ListeningQuestion
@@ -8,3 +9,4 @@ from app.models.reading import (
 from app.models.writing import WritingTest, WritingTask
 from app.models.speaking import SpeakingTest, SpeakingPart
 from app.models.ielts_test import IeltsTest, TestSession
+from app.models.vocabulary import VocabularyWord
