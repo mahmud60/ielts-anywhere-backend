@@ -27,6 +27,7 @@ class AffiliateCreate(BaseModel):
 class AffiliateUpdate(BaseModel):
     commission_rate: Optional[float] = Field(None, ge=0.0, le=1.0)
     is_active: Optional[bool] = None
+    discount_code: Optional[str] = Field(None, max_length=100)
 
 
 def _clean_code(code: str) -> str:
@@ -34,10 +35,16 @@ def _clean_code(code: str) -> str:
 
 
 def _referral_summary(referrals):
-    total = len(referrals)
+    signup_count = sum(1 for r in referrals if r.referred_user_id is not None)
+    conversion_count = sum(1 for r in referrals if r.order_id is not None)
     earnings = sum(float(r.commission_amount or 0) for r in referrals if r.status != ReferralStatus.pending)
     pending = sum(float(r.commission_amount or 0) for r in referrals if r.status == ReferralStatus.pending)
-    return {"total_referrals": total, "confirmed_earnings": earnings, "pending_earnings": pending}
+    return {
+        "signup_count": signup_count,
+        "conversion_count": conversion_count,
+        "confirmed_earnings": earnings,
+        "pending_earnings": pending,
+    }
 
 
 def _affiliate_out(aff):
@@ -49,6 +56,7 @@ def _affiliate_out(aff):
         "user_name": aff.user.full_name if aff.user else None,
         "code": aff.code,
         "commission_rate": float(aff.commission_rate),
+        "discount_code": aff.discount_code,
         "is_active": aff.is_active,
         "created_at": aff.created_at.isoformat() if aff.created_at else None,
         **summary,
@@ -133,6 +141,8 @@ async def update_affiliate(
         aff.commission_rate = body.commission_rate
     if body.is_active is not None:
         aff.is_active = body.is_active
+    if body.discount_code is not None:
+        aff.discount_code = body.discount_code or None  # empty string → NULL
 
     await db.flush()
     return _affiliate_out(aff)
@@ -185,6 +195,8 @@ async def get_my_affiliate(
         {
             "id": str(r.id),
             "referred_user_email": r.referred_user.email if r.referred_user else None,
+            "signed_up": r.referred_user_id is not None,
+            "converted": r.order_id is not None,
             "order_amount": float(r.order_amount) if r.order_amount else None,
             "commission_amount": float(r.commission_amount) if r.commission_amount else None,
             "status": r.status,
@@ -197,7 +209,9 @@ async def get_my_affiliate(
         "id": str(aff.id),
         "code": aff.code,
         "commission_rate": float(aff.commission_rate),
+        "discount_code": aff.discount_code,
         "is_active": aff.is_active,
+        "referral_link": f"https://ieltsanywhere.app/login?ref={aff.code}",
         "referrals": referrals_out,
         **summary,
     }

@@ -82,6 +82,41 @@ def build_test_complete_email(
     return subject, html
 
 
+def build_referral_signup_email(
+    affiliate_name: str,
+    referred_email: str,
+    code: str,
+    commission_rate: float,
+) -> tuple[str, str]:
+    """Returns (subject, html) sent to an affiliate when someone signs up via their link."""
+    pct = int(round(commission_rate * 100))
+    subject = "New signup via your referral link!"
+    body = f"""
+    <p style="color:#374151;font-size:15px;line-height:1.7;">
+      Someone just signed up using your referral code <strong>{code}</strong>.
+    </p>
+    <div style="background:#f0fdf4;border-radius:8px;padding:14px 18px;margin:18px 0;">
+      <div style="font-size:12px;color:#15803d;margin-bottom:2px;">New user</div>
+      <div style="font-size:16px;font-weight:700;color:#166534;">{referred_email}</div>
+    </div>
+    <p style="color:#6b7280;font-size:13px;line-height:1.65;">
+      When they subscribe to Pro you'll earn <strong>{pct}% commission</strong>.
+      Track all your referrals in your affiliate dashboard.
+    </p>
+    <a href="https://ieltsanywhere.app/affiliate"
+       style="display:inline-block;margin-top:8px;padding:10px 22px;background:#0ea5e9;
+              color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
+      View affiliate dashboard
+    </a>
+    """
+    html = _render(
+        title="New referral signup!",
+        subtitle=f"Hi {affiliate_name or 'there'}, you have a new referral.",
+        body=body,
+    )
+    return subject, html
+
+
 def build_subscription_email(user_name: str, tier: str) -> tuple[str, str]:
     subject = "Welcome to IELTS Anywhere Pro!"
     body = """

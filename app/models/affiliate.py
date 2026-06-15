@@ -20,6 +20,7 @@ class Affiliate(Base):
     code = Column(String(50), unique=True, nullable=False, index=True)
     commission_rate = Column(Numeric(5, 4), nullable=False, default=0.20)  # e.g. 0.20 = 20%
     is_active = Column(Boolean, default=True, nullable=False)
+    discount_code = Column(String(100), nullable=True)
 
     user = relationship("User", back_populates="affiliate")
     referrals = relationship("AffiliateReferral", back_populates="affiliate")

@@ -5,6 +5,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from typing import Optional
 
 from app.db.session import get_db
@@ -32,7 +33,9 @@ async def get_checkout_url(
         raise HTTPException(503, "Payment system not configured")
 
     custom = {"user_id": str(current_user.id)}
+    discount_code: Optional[str] = None
 
+    # 1. Honour ?ref= param passed directly (backward compat / manual share)
     if ref:
         code = ref.strip().upper()
         result = await db.execute(
@@ -41,6 +44,30 @@ async def get_checkout_url(
         affiliate = result.scalar_one_or_none()
         if affiliate:
             custom["ref_code"] = code
+            if affiliate.discount_code:
+                discount_code = affiliate.discount_code
+
+    # 2. Look up discount from the user's existing signup-stage referral record
+    if not discount_code:
+        ref_result = await db.execute(
+            select(AffiliateReferral)
+            .where(
+                AffiliateReferral.referred_user_id == current_user.id,
+                AffiliateReferral.order_id == None,
+            )
+            .options(selectinload(AffiliateReferral.affiliate))
+        )
+        signup_referral = ref_result.scalar_one_or_none()
+        if signup_referral and signup_referral.affiliate:
+            aff = signup_referral.affiliate
+            if "ref_code" not in custom:
+                custom["ref_code"] = aff.code
+            if aff.discount_code:
+                discount_code = aff.discount_code
+
+    checkout_data: dict = {"email": current_user.email, "custom": custom}
+    if discount_code:
+        checkout_data["discount_code"] = discount_code
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -54,10 +81,7 @@ async def get_checkout_url(
                 "data": {
                     "type": "checkouts",
                     "attributes": {
-                        "checkout_data": {
-                            "email": current_user.email,
-                            "custom": custom,
-                        },
+                        "checkout_data": checkout_data,
                         "product_options": {
                             "redirect_url": "http://localhost:3000/dashboard",
                         },
@@ -136,7 +160,7 @@ async def lemonsqueezy_webhook(
         if event_name == "order_created" or status in ("active", "on_trial"):
             user.subscription = SubscriptionTier.pro
 
-            # Record affiliate referral if a ref_code was passed at checkout
+            # Record / upgrade affiliate referral
             ref_code = custom_data.get("ref_code", "").strip().upper()
             if ref_code:
                 aff_result = await db.execute(
@@ -145,21 +169,36 @@ async def lemonsqueezy_webhook(
                 affiliate = aff_result.scalar_one_or_none()
                 if affiliate:
                     order_id = str(payload.get("data", {}).get("id", ""))
-                    # Avoid duplicate referral records for the same order
-                    dup = await db.execute(
-                        select(AffiliateReferral).where(AffiliateReferral.order_id == order_id)
-                    )
-                    if not dup.scalar_one_or_none():
-                        total_cents = attributes.get("total", 0) or 0
-                        order_amount = round(total_cents / 100, 2)
-                        commission = round(order_amount * float(affiliate.commission_rate), 2)
-                        db.add(AffiliateReferral(
-                            affiliate_id=affiliate.id,
-                            referred_user_id=user.id,
-                            order_id=order_id,
-                            order_amount=order_amount,
-                            commission_amount=commission,
-                        ))
+                    total_cents = attributes.get("total", 0) or 0
+                    order_amount = round(total_cents / 100, 2)
+                    commission = round(order_amount * float(affiliate.commission_rate), 2)
+
+                    # Prefer upgrading an existing signup-stage referral for this user
+                    existing_ref = (await db.execute(
+                        select(AffiliateReferral).where(
+                            AffiliateReferral.affiliate_id == affiliate.id,
+                            AffiliateReferral.referred_user_id == user.id,
+                            AffiliateReferral.order_id == None,
+                        )
+                    )).scalar_one_or_none()
+
+                    if existing_ref:
+                        existing_ref.order_id = order_id
+                        existing_ref.order_amount = order_amount
+                        existing_ref.commission_amount = commission
+                    else:
+                        # No signup record; guard against duplicate order_id
+                        dup = (await db.execute(
+                            select(AffiliateReferral).where(AffiliateReferral.order_id == order_id)
+                        )).scalar_one_or_none()
+                        if not dup:
+                            db.add(AffiliateReferral(
+                                affiliate_id=affiliate.id,
+                                referred_user_id=user.id,
+                                order_id=order_id,
+                                order_amount=order_amount,
+                                commission_amount=commission,
+                            ))
 
     elif event_name == "subscription_cancelled":
         # Revert to free when subscription is cancelled
