@@ -51,7 +51,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://ielts-anywhere-frontend.vercel.app",
-        "https://www.ieltsanywhere.com/"
+        "https://ieltsanywhere.com"
     ],
     allow_credentials=True,
     allow_methods=["*"],

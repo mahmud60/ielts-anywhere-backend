@@ -69,34 +69,37 @@ async def get_checkout_url(
     if discount_code:
         checkout_data["discount_code"] = discount_code
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.lemonsqueezy.com/v1/checkouts",
-            headers={
-                "Authorization": f"Bearer {settings.LEMONSQUEEZY_API_KEY}",
-                "Accept": "application/vnd.api+json",
-                "Content-Type": "application/vnd.api+json",
-            },
-            json={
-                "data": {
-                    "type": "checkouts",
-                    "attributes": {
-                        "checkout_data": checkout_data,
-                        "product_options": {
-                            "redirect_url": "http://localhost:3000/dashboard",
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.lemonsqueezy.com/v1/checkouts",
+                headers={
+                    "Authorization": f"Bearer {settings.LEMONSQUEEZY_API_KEY}",
+                    "Accept": "application/vnd.api+json",
+                    "Content-Type": "application/vnd.api+json",
+                },
+                json={
+                    "data": {
+                        "type": "checkouts",
+                        "attributes": {
+                            "checkout_data": checkout_data,
+                            "product_options": {
+                                "redirect_url": "http://localhost:3000/dashboard",
+                            },
                         },
-                    },
-                    "relationships": {
-                        "variant": {
-                            "data": {
-                                "type": "variants",
-                                "id": settings.LEMONSQUEEZY_PRO_VARIANT_ID,
+                        "relationships": {
+                            "variant": {
+                                "data": {
+                                    "type": "variants",
+                                    "id": settings.LEMONSQUEEZY_PRO_VARIANT_ID,
+                                }
                             }
-                        }
-                    },
-                }
-            },
-        )
+                        },
+                    }
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"Could not reach payment provider: {exc}")
 
     if response.status_code not in (200, 201):
         raise HTTPException(502, "Failed to create checkout session")

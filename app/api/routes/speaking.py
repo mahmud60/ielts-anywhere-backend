@@ -376,8 +376,6 @@ async def el_submit_speaking(
                 test_session.status = SessionStatus.completed
                 test_session.completed_at = datetime.now(timezone.utc)
 
-    await db.commit()
-
     return {"session_id": str(attempt.id), "result": result}
 
 
