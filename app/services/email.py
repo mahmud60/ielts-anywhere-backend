@@ -13,7 +13,7 @@ _TEMPLATE = """
     <p style="color:#6b7280;margin:0 0 24px;font-size:15px;">{subtitle}</p>
     {body}
     <p style="color:#9ca3af;font-size:12px;margin-top:32px;border-top:1px solid #f3f4f6;padding-top:16px;">
-      IELTS Anywhere · <a href="https://ieltsanywhere.app" style="color:#0ea5e9;">ieltsanywhere.app</a>
+      IELTS Anywhere · <a href="https://ieltsanywhere.com" style="color:#0ea5e9;">ieltsanywhere.com</a>
     </p>
   </div>
 </body>
@@ -67,7 +67,7 @@ def build_test_complete_email(
     <table style="width:100%;border-collapse:collapse;">
       {rows}
     </table>
-    <a href="https://ieltsanywhere.app/test/{session_id}"
+    <a href="https://ieltsanywhere.com/test/{session_id}"
        style="display:inline-block;margin-top:20px;padding:10px 22px;background:#0ea5e9;
               color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
       View full results
@@ -103,7 +103,7 @@ def build_referral_signup_email(
       When they subscribe to Pro you'll earn <strong>{pct}% commission</strong>.
       Track all your referrals in your affiliate dashboard.
     </p>
-    <a href="https://ieltsanywhere.app/affiliate"
+    <a href="https://ieltsanywhere.com/affiliate"
        style="display:inline-block;margin-top:8px;padding:10px 22px;background:#0ea5e9;
               color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
       View affiliate dashboard
@@ -130,7 +130,7 @@ def build_subscription_email(user_name: str, tier: str) -> tuple[str, str]:
       <li>Vocabulary and grammar practice exercises</li>
       <li>Progress tracking with band score charts</li>
     </ul>
-    <a href="https://ieltsanywhere.app/dashboard"
+    <a href="https://ieltsanywhere.com/dashboard"
        style="display:inline-block;margin-top:16px;padding:10px 22px;background:#0ea5e9;
               color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
       Go to dashboard

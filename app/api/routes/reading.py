@@ -286,6 +286,8 @@ async def get_attempts(
         .where(
             TestAttempt.user_id == current_user.id,
             TestAttempt.module == ModuleType.reading,
+            TestAttempt.status == GradingStatus.complete,
+            TestAttempt.test_id.isnot(None),
         )
         .order_by(TestAttempt.created_at.desc())
         .limit(20)

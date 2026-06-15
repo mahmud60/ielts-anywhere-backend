@@ -211,7 +211,7 @@ async def get_my_affiliate(
         "commission_rate": float(aff.commission_rate),
         "discount_code": aff.discount_code,
         "is_active": aff.is_active,
-        "referral_link": f"https://ieltsanywhere.app/login?ref={aff.code}",
+        "referral_link": f"https://ieltsanywhere.com/login?ref={aff.code}",
         "referrals": referrals_out,
         **summary,
     }
