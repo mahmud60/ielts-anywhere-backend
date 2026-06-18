@@ -113,7 +113,7 @@ async def entrypoint(ctx: JobContext) -> None:
     await session.start(
         room=ctx.room,
         agent=IELTSExaminer(),
-        room_input_options=RoomInputOptions(noise_cancellation=True),
+        room_input_options=RoomInputOptions(),
     )
     logger.info("AgentSession started for room: %s", ctx.room.name)
 
