@@ -65,6 +65,11 @@ class IELTSExaminer(Agent):
     def __init__(self):
         super().__init__(instructions=IELTS_EXAMINER_PROMPT)
 
+    async def on_enter(self) -> None:
+        await self.session.generate_reply(
+            instructions="Greet the candidate warmly, introduce yourself as their IELTS examiner, and ask for their full name to begin Part 1."
+        )
+
 
 async def _publish_transcript(ctx: JobContext, role: str, text: str) -> None:
     """Send a transcript entry to the browser via LiveKit data channel."""
