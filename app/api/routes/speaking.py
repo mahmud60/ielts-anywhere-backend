@@ -298,7 +298,13 @@ class _ELSubmitBody(BaseModel):
 
 def _parse_claude_json(text: str) -> dict:
     text = re.sub(r"```(?:json)?\n?", "", text).strip()
-    return json.loads(text)
+    if not text:
+        raise ValueError("AI returned an empty response — cannot parse scores")
+    # Extract first JSON object in case there is surrounding prose
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        raise ValueError(f"No JSON object found in AI response: {text[:200]}")
+    return json.loads(match.group())
 
 
 def _to_float(v):
@@ -338,6 +344,10 @@ async def el_submit_speaking(
 
     if not transcript_text.strip():
         raise HTTPException(400, "Transcript is empty — nothing to score")
+
+    candidate_lines = [m for m in body.transcript if m.role == "user"]
+    if not candidate_lines:
+        raise HTTPException(400, "No candidate speech recorded — session may have ended too early")
 
     attempt = SpeakingAttempt(
         user_id=str(current_user.id),
