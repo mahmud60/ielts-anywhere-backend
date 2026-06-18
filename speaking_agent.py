@@ -1,6 +1,6 @@
 """
-IELTS Speaking Agent — LiveKit voice pipeline
-=============================================
+IELTS Speaking Agent — LiveKit voice pipeline (livekit-agents 1.x)
+==================================================================
 Run alongside FastAPI as a separate process:
 
   Development:   python speaking_agent.py dev
@@ -23,10 +23,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
-from livekit.agents import llm
-from livekit.agents.voice_assistant import VoiceAssistant
-from livekit.plugins import deepgram, silero
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    ChatMessage,
+    ConversationItemAddedEvent,
+    JobContext,
+    RoomInputOptions,
+    WorkerOptions,
+    cli,
+)
+from livekit.plugins import deepgram
 from livekit.plugins import openai as lk_openai
 from livekit.plugins import google as lk_google
 
@@ -54,6 +61,11 @@ Guidelines:
 """
 
 
+class IELTSExaminer(Agent):
+    def __init__(self):
+        super().__init__(instructions=IELTS_EXAMINER_PROMPT)
+
+
 async def _publish_transcript(ctx: JobContext, role: str, text: str) -> None:
     """Send a transcript entry to the browser via LiveKit data channel."""
     try:
@@ -68,13 +80,10 @@ async def _publish_transcript(ctx: JobContext, role: str, text: str) -> None:
 
 
 async def entrypoint(ctx: JobContext) -> None:
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    await ctx.connect()
     logger.info("Agent joined room: %s", ctx.room.name)
 
-    initial_ctx = llm.ChatContext().append(role="system", text=IELTS_EXAMINER_PROMPT)
-
-    assistant = VoiceAssistant(
-        vad=silero.VAD.load(),
+    session = AgentSession(
         stt=deepgram.STT(
             model="nova-2",
             api_key=os.environ["DEEPGRAM_API_KEY"],
@@ -88,23 +97,25 @@ async def entrypoint(ctx: JobContext) -> None:
             voice="nova",
             api_key=os.environ["OPENAI_API_KEY"],
         ),
-        chat_ctx=initial_ctx,
     )
 
-    @assistant.on("user_speech_committed")
-    def on_user_speech(msg: llm.ChatMessage) -> None:
-        text = msg.content if isinstance(msg.content, str) else ""
-        if text.strip():
-            asyncio.ensure_future(_publish_transcript(ctx, "user", text.strip()))
+    @session.on("conversation_item_added")
+    def on_item_added(event: ConversationItemAddedEvent) -> None:
+        item = event.item
+        if not isinstance(item, ChatMessage):
+            return
+        text = item.text_content
+        if not text or not text.strip():
+            return
+        role = "user" if str(item.role) == "user" else "agent"
+        asyncio.ensure_future(_publish_transcript(ctx, role, text.strip()))
 
-    @assistant.on("agent_speech_committed")
-    def on_agent_speech(msg: llm.ChatMessage) -> None:
-        text = msg.content if isinstance(msg.content, str) else ""
-        if text.strip():
-            asyncio.ensure_future(_publish_transcript(ctx, "agent", text.strip()))
-
-    assistant.start(ctx.room)
-    logger.info("VoiceAssistant started for room: %s", ctx.room.name)
+    await session.start(
+        room=ctx.room,
+        agent=IELTSExaminer(),
+        room_input_options=RoomInputOptions(noise_cancellation=True),
+    )
+    logger.info("AgentSession started for room: %s", ctx.room.name)
 
 
 if __name__ == "__main__":
