@@ -93,9 +93,9 @@ async def entrypoint(ctx: JobContext) -> None:
             model="nova-2",
             api_key=os.environ["DEEPGRAM_API_KEY"],
         ),
-        llm=lk_google.LLM(
-            model="gemini-2.0-flash",
-            api_key=os.environ["GOOGLE_API_KEY"],
+        llm=lk_openai.LLM(
+            model="gpt-4o-mini",
+            api_key=os.environ["OPENAI_API_KEY"],
         ),
         tts=lk_openai.TTS(
             model="tts-1",
