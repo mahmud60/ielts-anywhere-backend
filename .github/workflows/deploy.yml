@@ -160,45 +160,56 @@ jobs:
     name: Deploy Speaking Agent to VM
     runs-on: ubuntu-latest
     needs: build-api
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        env:
-          SECRET_LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
-          SECRET_LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
-          SECRET_LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
-          SECRET_DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
-          SECRET_GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          SECRET_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
         with:
-          host: 34.59.24.3
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          envs: SECRET_LIVEKIT_URL,SECRET_LIVEKIT_API_KEY,SECRET_LIVEKIT_API_SECRET,SECRET_DEEPGRAM_API_KEY,SECRET_GOOGLE_API_KEY,SECRET_OPENAI_API_KEY
-          script: |
-            set -e
-            cd /home/MAHMUD/ielts-anywhere-backend
-            git pull origin main
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-            echo "LIVEKIT_URL=$SECRET_LIVEKIT_URL" > .env
-            echo "LIVEKIT_API_KEY=$SECRET_LIVEKIT_API_KEY" >> .env
-            echo "LIVEKIT_API_SECRET=$SECRET_LIVEKIT_API_SECRET" >> .env
-            echo "DEEPGRAM_API_KEY=$SECRET_DEEPGRAM_API_KEY" >> .env
-            echo "GOOGLE_API_KEY=$SECRET_GOOGLE_API_KEY" >> .env
-            echo "OPENAI_API_KEY=$SECRET_OPENAI_API_KEY" >> .env
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
-            pip3 install -r requirements.agent.txt --user --quiet --no-cache-dir
-            export PATH="$HOME/.local/bin:$PATH"
+      - name: Write .env for agent
+        run: |
+          cat > /tmp/agent.env << 'ENVEOF'
+          LIVEKIT_URL=${{ secrets.LIVEKIT_URL }}
+          LIVEKIT_API_KEY=${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET=${{ secrets.LIVEKIT_API_SECRET }}
+          DEEPGRAM_API_KEY=${{ secrets.DEEPGRAM_API_KEY }}
+          GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          ENVEOF
+          sed -i 's/^[[:space:]]*//' /tmp/agent.env
 
-            # Pre-download Silero VAD model
-            python3 -c "from livekit.plugins import silero; silero.VAD.load()" 2>/dev/null || true
+      - name: Upload .env to agent VM
+        run: |
+          gcloud compute scp /tmp/agent.env ielts-agent:/home/MAHMUD/ielts-anywhere-backend/.env \
+            --zone=us-central1-a \
+            --tunnel-through-iap \
+            --quiet
 
-            # Restart agent worker
-            kill $(cat /tmp/agent.pid 2>/dev/null) 2>/dev/null || true
-            sleep 2
-            rm -f /tmp/agent.pid
-            nohup python3 speaking_agent.py start > /tmp/agent.log 2>&1 &
-            echo $! > /tmp/agent.pid
-            sleep 3
-            echo "Speaking agent deployed (PID $(cat /tmp/agent.pid))"
+      - name: Deploy agent on VM
+        run: |
+          gcloud compute ssh ielts-agent \
+            --zone=us-central1-a \
+            --tunnel-through-iap \
+            --command='
+              set -e
+              cd /home/MAHMUD/ielts-anywhere-backend
+              git pull origin main
+              pip3 install -r requirements.agent.txt --user --quiet --no-cache-dir
+              export PATH="$HOME/.local/bin:$PATH"
+              python3 -c "from livekit.plugins import silero; silero.VAD.load()" 2>/dev/null || true
+              kill $(cat /tmp/agent.pid 2>/dev/null) 2>/dev/null || true
+              sleep 2
+              rm -f /tmp/agent.pid
+              nohup python3 speaking_agent.py start > /tmp/agent.log 2>&1 &
+              echo $! > /tmp/agent.pid
+              sleep 3
+              echo "Speaking agent deployed (PID $(cat /tmp/agent.pid))"
+            '
