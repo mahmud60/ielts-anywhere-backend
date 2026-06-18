@@ -188,15 +188,15 @@ jobs:
             echo "GOOGLE_API_KEY=$SECRET_GOOGLE_API_KEY" >> .env
             echo "OPENAI_API_KEY=$SECRET_OPENAI_API_KEY" >> .env
 
-            pip3 install -r requirements.agent.txt --user --quiet --no-cache-dir
-            export PATH="$HOME/.local/bin:$PATH"
+            python3 -m venv /home/MAHMUD/agent-venv
+            /home/MAHMUD/agent-venv/bin/pip install -r requirements.agent.txt --quiet --no-cache-dir
 
-            python3 -c "from livekit.plugins import silero; silero.VAD.load()" 2>/dev/null || true
+            /home/MAHMUD/agent-venv/bin/python -c "from livekit.plugins import silero; silero.VAD.load()" 2>/dev/null || true
 
             kill $(cat /tmp/agent.pid 2>/dev/null) 2>/dev/null || true
             sleep 2
             rm -f /tmp/agent.pid
-            nohup python3 speaking_agent.py start > /tmp/agent.log 2>&1 &
+            nohup /home/MAHMUD/agent-venv/bin/python speaking_agent.py start > /tmp/agent.log 2>&1 &
             echo $! > /tmp/agent.pid
             sleep 3
             echo "Speaking agent deployed (PID $(cat /tmp/agent.pid))"
