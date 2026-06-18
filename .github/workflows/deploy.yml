@@ -126,7 +126,8 @@ jobs:
           script: |
             set -e
             cd /home/MAHMUD/ielts-anywhere-backend
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "DATABASE_URL=$SECRET_DATABASE_URL" > .env
             echo "REDIS_URL=$SECRET_REDIS_URL" >> .env
@@ -175,7 +176,8 @@ jobs:
           script: |
             set -e
             cd /home/MAHMUD/ielts-anywhere-backend
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "LIVEKIT_URL=$SECRET_LIVEKIT_URL" > .env
             echo "LIVEKIT_API_KEY=$SECRET_LIVEKIT_API_KEY" >> .env
