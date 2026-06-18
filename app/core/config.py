@@ -22,12 +22,23 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = ""
     R2_PUBLIC_URL: str = ""   # e.g. https://pub-xxx.r2.dev
 
-    # OpenAI (Whisper transcription)
+    # OpenAI (TTS in speaking agent)
     OPENAI_API_KEY: str = ""
 
-    # ElevenLabs (conversational speaking agent)
+    # ElevenLabs (legacy — no longer used for speaking)
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_AGENT_ID: str = "agent_9801ksdjxvqqfkdvsh8acxc4xge5"
+
+    # LiveKit (WebRTC transport for speaking agent)
+    LIVEKIT_API_KEY: str = ""
+    LIVEKIT_API_SECRET: str = ""
+    LIVEKIT_URL: str = ""          # e.g. wss://your-app.livekit.cloud
+
+    # Deepgram (STT in speaking agent)
+    DEEPGRAM_API_KEY: str = ""
+
+    # Google AI (Gemini LLM in speaking agent) — env var read by livekit-plugins-google
+    GOOGLE_API_KEY: str = ""
 
     # Email (Resend — https://resend.com)
     RESEND_API_KEY: str = ""

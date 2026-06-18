@@ -84,3 +84,7 @@ vine==5.1.0
 watchfiles==1.1.1
 wcwidth==0.6.0
 websockets==16.0
+
+# LiveKit voice agent pipeline
+livekit-agents[deepgram,silero,openai,google]>=0.8
+livekit-api>=0.6

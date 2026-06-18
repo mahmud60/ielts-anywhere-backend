@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID as PyUUID
@@ -11,9 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 import httpx
 from anthropic import AsyncAnthropic
+from livekit.api import AccessToken, VideoGrants
 
 from app.db.session import get_db
-from app.models.user import User
+from app.models.user import User, SubscriptionTier
 from app.models.test import TestAttempt, ModuleType, GradingStatus
 from app.models.speaking import SpeakingTest
 from app.models.speaking_attempt import SpeakingAttempt
@@ -231,6 +233,31 @@ async def get_attempts(
         }
         for a in result.scalars().all()
     ]
+
+
+# ─── LiveKit standalone speaking routes ────────────────────────────────────
+
+
+@router.post("/lk-token")
+async def get_livekit_token(
+    current_user: User = Depends(get_current_user),
+):
+    """Return a LiveKit room token so the browser can join a speaking room.
+    The LiveKit agent worker picks up the room and starts the IELTS pipeline."""
+    if current_user.subscription != SubscriptionTier.pro:
+        raise HTTPException(403, "Pro subscription required")
+    if not settings.LIVEKIT_API_KEY or not settings.LIVEKIT_API_SECRET or not settings.LIVEKIT_URL:
+        raise HTTPException(503, "LiveKit is not configured on this server")
+
+    room_name = f"speaking-{current_user.id}-{int(time.time())}"
+    token = (
+        AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
+        .with_identity(str(current_user.id))
+        .with_name(getattr(current_user, "display_name", None) or "Candidate")
+        .with_grants(VideoGrants(room_join=True, room=room_name))
+        .to_jwt()
+    )
+    return {"token": token, "room_name": room_name, "ws_url": settings.LIVEKIT_URL}
 
 
 # ─── ElevenLabs standalone speaking routes ─────────────────────────────────
