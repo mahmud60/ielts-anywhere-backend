@@ -25,10 +25,6 @@ class Settings(BaseSettings):
     # OpenAI (TTS in speaking agent)
     OPENAI_API_KEY: str = ""
 
-    # ElevenLabs (legacy — no longer used for speaking)
-    ELEVENLABS_API_KEY: str = ""
-    ELEVENLABS_AGENT_ID: str = "agent_9801ksdjxvqqfkdvsh8acxc4xge5"
-
     # LiveKit (WebRTC transport for speaking agent)
     LIVEKIT_API_KEY: str = ""
     LIVEKIT_API_SECRET: str = ""

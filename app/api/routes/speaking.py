@@ -260,39 +260,15 @@ async def get_livekit_token(
     return {"token": token, "room_name": room_name, "ws_url": settings.LIVEKIT_URL}
 
 
-# ─── ElevenLabs standalone speaking routes ─────────────────────────────────
-
-
-@router.get("/el-signed-url")
-async def get_el_signed_url(
-    current_user: User = Depends(get_current_user),
-):
-    """Return a short-lived ElevenLabs signed URL for the frontend to open a conversation."""
-    if not settings.ELEVENLABS_API_KEY or not settings.ELEVENLABS_AGENT_ID:
-        raise HTTPException(503, "ElevenLabs is not configured on this server")
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        res = await client.get(
-            "https://api.elevenlabs.io/v1/convai/conversation/get_signed_url",
-            params={"agent_id": settings.ELEVENLABS_AGENT_ID},
-            headers={"xi-api-key": settings.ELEVENLABS_API_KEY},
-        )
-
-    if not res.is_success:
-        raise HTTPException(502, f"ElevenLabs error: {res.text}")
-
-    return res.json()  # { "signed_url": "wss://..." }
-
-
-class _ELMessage(BaseModel):
+class _SpeakingMessage(BaseModel):
     role: str       # 'agent' | 'user'
     text: str
     timestamp: float
 
 
-class _ELSubmitBody(BaseModel):
-    transcript: list[_ELMessage]
-    elevenlabs_session_id: Optional[str] = None
+class _SubmitBody(BaseModel):
+    transcript: list[_SpeakingMessage]
+    room_name: Optional[str] = None
     test_session_id: Optional[str] = None
 
 
@@ -330,13 +306,13 @@ _SCORE_SYSTEM = (
 )
 
 
-@router.post("/el-submit")
-async def el_submit_speaking(
-    body: _ELSubmitBody,
+@router.post("/submit")
+async def submit_speaking(
+    body: _SubmitBody,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Score a completed ElevenLabs conversation with Claude and store the result."""
+    """Score a completed speaking session and store the result."""
     transcript_text = "\n".join(
         f"{'Examiner' if m.role == 'agent' else 'Candidate'}: {m.text}"
         for m in body.transcript
@@ -391,8 +367,6 @@ async def el_submit_speaking(
         "grammatical_range": result["grammatical_range"].get("errors", []),
         "pronunciation": result["pronunciation"].get("errors", []),
     }
-    if body.elevenlabs_session_id:
-        attempt.elevenlabs_session_id = body.elevenlabs_session_id
     attempt.completed_at = datetime.now(timezone.utc)
 
     # Link to test session if provided
