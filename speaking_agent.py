@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import time
 
 from dotenv import load_dotenv
@@ -39,7 +40,14 @@ from livekit.plugins import google as lk_google
 
 logger = logging.getLogger("ielts-speaking-agent")
 
-IELTS_EXAMINER_PROMPT = """You are a certified IELTS speaking examiner conducting an official IELTS Speaking test. \
+PERSONAS = [
+    {"name": "Sarah",   "voice": "nova",    "gender": "female"},
+    {"name": "Claire",  "voice": "shimmer",  "gender": "female"},
+    {"name": "James",   "voice": "echo",    "gender": "male"},
+    {"name": "Michael", "voice": "onyx",    "gender": "male"},
+]
+
+IELTS_EXAMINER_PROMPT = """Your name is {name}. You are a certified IELTS speaking examiner conducting an official IELTS Speaking test. \
 The test has three parts:
 
 Part 1 (first 5 minutes): Introduction and interview. Ask about familiar topics such as home, family, work, \
@@ -62,12 +70,13 @@ Guidelines:
 
 
 class IELTSExaminer(Agent):
-    def __init__(self):
-        super().__init__(instructions=IELTS_EXAMINER_PROMPT)
+    def __init__(self, name: str) -> None:
+        super().__init__(instructions=IELTS_EXAMINER_PROMPT.format(name=name))
+        self._name = name
 
     async def on_enter(self) -> None:
         await self.session.generate_reply(
-            instructions="Greet the candidate warmly, introduce yourself as their IELTS examiner, and ask for their full name to begin Part 1."
+            instructions=f"Greet the candidate warmly, introduce yourself as {self._name}, and ask for their full name to begin Part 1."
         )
 
 
@@ -86,7 +95,8 @@ async def _publish_transcript(ctx: JobContext, role: str, text: str) -> None:
 
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
-    logger.info("Agent joined room: %s", ctx.room.name)
+    persona = random.choice(PERSONAS)
+    logger.info("Agent joined room: %s (examiner: %s)", ctx.room.name, persona["name"])
 
     session = AgentSession(
         stt=deepgram.STT(
@@ -99,7 +109,7 @@ async def entrypoint(ctx: JobContext) -> None:
         ),
         tts=lk_openai.TTS(
             model="tts-1",
-            voice="nova",
+            voice=persona["voice"],
             api_key=os.environ["OPENAI_API_KEY"],
         ),
     )
@@ -117,7 +127,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     await session.start(
         room=ctx.room,
-        agent=IELTSExaminer(),
+        agent=IELTSExaminer(name=persona["name"]),
         room_input_options=RoomInputOptions(),
     )
     logger.info("AgentSession started for room: %s", ctx.room.name)
