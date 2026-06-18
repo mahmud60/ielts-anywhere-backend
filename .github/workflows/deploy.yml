@@ -189,8 +189,15 @@ jobs:
             echo "GOOGLE_API_KEY=$SECRET_GOOGLE_API_KEY" >> .env
             echo "OPENAI_API_KEY=$SECRET_OPENAI_API_KEY" >> .env
 
-            python3 -m venv /home/MAHMUD/agent-venv
-            /home/MAHMUD/agent-venv/bin/pip install -r requirements.agent.txt --quiet --upgrade-strategy only-if-needed
+            if [ ! -f /home/MAHMUD/agent-venv/bin/python ]; then
+              python3 -m venv /home/MAHMUD/agent-venv
+            fi
+            REQ_HASH=$(md5sum requirements.agent.txt | cut -d' ' -f1)
+            HASH_FILE=/home/MAHMUD/agent-venv/.req-hash
+            if [ ! -f "$HASH_FILE" ] || [ "$(cat $HASH_FILE)" != "$REQ_HASH" ]; then
+              /home/MAHMUD/agent-venv/bin/pip install -r requirements.agent.txt --quiet
+              echo "$REQ_HASH" > "$HASH_FILE"
+            fi
 
             kill $(cat /tmp/agent.pid 2>/dev/null) 2>/dev/null || true
             sleep 2
