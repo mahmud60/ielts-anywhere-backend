@@ -65,46 +65,6 @@ async def get_test_for_session(
     return test
 
 
-@router.post("/submit", response_model=SpeakingResultOut, status_code=202)
-async def submit_speaking(
-    body: SubmitSpeakingRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    test = (await db.execute(
-        select(SpeakingTest).where(SpeakingTest.id == body.test_id)
-    )).scalar_one_or_none()
-    if not test:
-        raise HTTPException(404, "Test not found")
-
-    if len(body.part_responses) != 3:
-        raise HTTPException(400, "All three parts must be submitted together")
-
-    raw_answers = {
-        f"part{pr.part_number}": {
-            "part_number": pr.part_number,
-            "exchanges": pr.exchanges,
-        }
-        for pr in body.part_responses
-    }
-
-    attempt = TestAttempt(
-        user_id=current_user.id,
-        module=ModuleType.speaking,
-        status=GradingStatus.pending,
-        raw_answers=raw_answers,
-    )
-    db.add(attempt)
-    await db.flush()
-
-    part_responses_data = [
-        {"part_number": pr.part_number, "exchanges": pr.exchanges}
-        for pr in body.part_responses
-    ]
-    grade_speaking_task.delay(str(attempt.id), part_responses_data)
-
-    return SpeakingResultOut(attempt_id=attempt.id, status=GradingStatus.pending)
-
 
 @router.get("/attempts/{attempt_id}", response_model=SpeakingResultOut)
 async def get_attempt(
