@@ -172,7 +172,7 @@ jobs:
           SECRET_GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           SECRET_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:
-          host: 34.59.24.3
+          host: 34.67.87.122
           username: MAHMUD
           key: ${{ secrets.AGENT_VM_SSH_KEY }}
           envs: SECRET_LIVEKIT_URL,SECRET_LIVEKIT_API_KEY,SECRET_LIVEKIT_API_SECRET,SECRET_DEEPGRAM_API_KEY,SECRET_GOOGLE_API_KEY,SECRET_OPENAI_API_KEY
