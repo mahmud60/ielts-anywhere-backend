@@ -178,6 +178,15 @@ jobs:
           envs: SECRET_LIVEKIT_URL,SECRET_LIVEKIT_API_KEY,SECRET_LIVEKIT_API_SECRET,SECRET_DEEPGRAM_API_KEY,SECRET_GOOGLE_API_KEY,SECRET_OPENAI_API_KEY
           script: |
             set -e
+
+            if [ ! -f /swapfile-agent ]; then
+              sudo fallocate -l 2G /swapfile-agent
+              sudo chmod 600 /swapfile-agent
+              sudo mkswap /swapfile-agent
+              sudo swapon /swapfile-agent
+              echo '/swapfile-agent none swap sw 0 0' | sudo tee -a /etc/fstab
+            fi
+
             cd /home/MAHMUD/ielts-anywhere-backend
             git fetch origin main
             git reset --hard origin/main
