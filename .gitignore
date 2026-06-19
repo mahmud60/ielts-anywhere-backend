@@ -5,8 +5,6 @@
 .env.*
 .firebase-service-account.json
 firebase-service-account.json
-alembic/
-/alembic
 
 # =========================
 # 🐍 Python
