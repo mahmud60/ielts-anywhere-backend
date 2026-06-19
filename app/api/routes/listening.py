@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import anthropic
 from collections import Counter
@@ -26,6 +27,8 @@ from app.models.user import SubscriptionTier
 from app.core.config import settings
 
 router = APIRouter(prefix="/listening", tags=["listening"])
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_json(raw: str) -> str:
@@ -58,7 +61,7 @@ async def _translate_tips(tips: list[str]) -> list[str]:
         if isinstance(translated, list) and len(translated) == len(tips):
             return translated
     except Exception:
-        pass
+        logger.warning("Tip translation failed; returning original tips", exc_info=True)
     return tips
 
 

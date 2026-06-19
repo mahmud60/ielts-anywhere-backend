@@ -1,7 +1,10 @@
 import json
+import logging
 import re
 import anthropic
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
@@ -92,6 +95,6 @@ def generate_feedback(module: str, data: dict) -> list[str]:
         if isinstance(tips, list) and tips:
             return [str(t) for t in tips[:5]]
     except Exception:
-        pass
+        logger.warning("LLM feedback generation failed; falling back to rule-based tips", exc_info=True)
 
     return []

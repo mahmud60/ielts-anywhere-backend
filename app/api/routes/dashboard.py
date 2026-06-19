@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import anthropic
 from fastapi import APIRouter, Depends, Query
@@ -13,6 +14,8 @@ from app.api.routes.auth import get_current_user
 from app.core.config import settings
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+logger = logging.getLogger(__name__)
 
 _VOCAB_KEYWORDS = ("vocab", "lexical", "word", "colloca", "phrasal", "idiom", "terminolog")
 _MODULES = ("listening", "reading", "writing", "speaking")
@@ -88,6 +91,7 @@ async def _translate_tips(tips_by_module: dict, vocab_tips: list) -> tuple[dict,
         if not isinstance(translated, list) or len(translated) != len(all_tips):
             return tips_by_module, vocab_tips
     except Exception:
+        logger.warning("Dashboard tip translation failed; returning original tips", exc_info=True)
         return tips_by_module, vocab_tips
 
     new_by_module = {mod: translated[start:end] for mod, (start, end) in module_ranges.items()}

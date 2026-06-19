@@ -1,5 +1,9 @@
+import logging
+
 import anthropic
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
@@ -47,6 +51,7 @@ def generate_listening_question_tip(question_type: str, stem: str, answer_key) -
         )
         return resp.content[0].text.strip()
     except Exception:
+        logger.warning("Listening question tip generation failed", exc_info=True)
         return ""
 
 
@@ -71,4 +76,5 @@ def generate_reading_question_tip(
         )
         return resp.content[0].text.strip()
     except Exception:
+        logger.warning("Reading question tip generation failed", exc_info=True)
         return ""
