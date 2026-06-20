@@ -21,9 +21,10 @@ RestartSec=3
 # whole VM. Tune alongside AGENT_MAX_SESSIONS and the VM size.
 MemoryMax=1700M
 
-# Keep logs where the deploy script and existing ops habits look for them.
-StandardOutput=append:/tmp/agent.log
-StandardError=append:/tmp/agent.log
+# Logs go to the systemd journal — view with:
+#   journalctl -u ielts-speaking-agent -f
+# (A file path here fails with 209/STDOUT when the service user does not own
+# the target file; journald sidesteps that entirely.)
 
 [Install]
 WantedBy=multi-user.target

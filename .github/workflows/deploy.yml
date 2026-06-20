@@ -217,13 +217,18 @@ jobs:
             sudo cp deploy/ielts-speaking-agent.service /etc/systemd/system/ielts-speaking-agent.service
             sudo systemctl daemon-reload
             sudo systemctl enable ielts-speaking-agent
+            sudo systemctl reset-failed ielts-speaking-agent || true
             sudo systemctl restart ielts-speaking-agent
 
-            sleep 3
-            if sudo systemctl is-active --quiet ielts-speaking-agent; then
-              echo "Speaking agent active (PID $(systemctl show -p MainPID --value ielts-speaking-agent))"
+            # Let it settle, then require an actually-running main process. A
+            # flapping/auto-restarting service must fail the deploy, not pass.
+            sleep 6
+            state=$(systemctl show -p SubState --value ielts-speaking-agent)
+            pid=$(systemctl show -p MainPID --value ielts-speaking-agent)
+            if [ "$state" = "running" ] && [ "$pid" != "0" ]; then
+              echo "Speaking agent active (PID $pid)"
             else
-              echo "Speaking agent failed to start; recent logs:"
-              tail -n 40 /tmp/agent.log || true
+              echo "Speaking agent not healthy (SubState=$state MainPID=$pid); recent logs:"
+              sudo journalctl -u ielts-speaking-agent -n 40 --no-pager || true
               exit 1
             fi
