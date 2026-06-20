@@ -214,14 +214,16 @@ jobs:
             sudo systemctl daemon-reload
             sudo systemctl enable ielts-speaking-agent
 
-            # Stop the service and reap ANY stale worker before starting. Old
-            # nohup-launched workers live outside systemd's cgroup, so they
-            # survive `systemctl stop` and keep port 8081 bound — which makes the
-            # new worker crash with "address already in use".
+            # Stop the managed service, then free port 8081 if a stale worker is
+            # still holding it (e.g. an old nohup process outside systemd's
+            # cgroup) — otherwise the new worker crashes with EADDRINUSE. Kill by
+            # PORT, not by name: matching "-f speaking_agent.py" also matches this
+            # deploy shell (the script contains that string) and SIGTERMs the SSH
+            # session.
             sudo systemctl stop ielts-speaking-agent 2>/dev/null || true
-            sudo pkill -f speaking_agent.py 2>/dev/null || true
+            sudo fuser -k 8081/tcp 2>/dev/null || true
             rm -f /tmp/agent.pid
-            sleep 2
+            sleep 3
 
             sudo systemctl reset-failed ielts-speaking-agent || true
             sudo systemctl start ielts-speaking-agent
