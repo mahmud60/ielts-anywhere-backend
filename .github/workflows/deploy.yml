@@ -208,17 +208,23 @@ jobs:
               echo "$REQ_HASH" > "$HASH_FILE"
             fi
 
-            # Retire any process started by the old nohup-based deploy.
-            kill $(cat /tmp/agent.pid 2>/dev/null) 2>/dev/null || true
-            rm -f /tmp/agent.pid
-
             # Install/refresh the systemd unit so the worker auto-restarts on
-            # crash, OOM, or reboot — then (re)start it on the latest code.
+            # crash, OOM, or reboot.
             sudo cp deploy/ielts-speaking-agent.service /etc/systemd/system/ielts-speaking-agent.service
             sudo systemctl daemon-reload
             sudo systemctl enable ielts-speaking-agent
+
+            # Stop the service and reap ANY stale worker before starting. Old
+            # nohup-launched workers live outside systemd's cgroup, so they
+            # survive `systemctl stop` and keep port 8081 bound — which makes the
+            # new worker crash with "address already in use".
+            sudo systemctl stop ielts-speaking-agent 2>/dev/null || true
+            sudo pkill -f speaking_agent.py 2>/dev/null || true
+            rm -f /tmp/agent.pid
+            sleep 2
+
             sudo systemctl reset-failed ielts-speaking-agent || true
-            sudo systemctl restart ielts-speaking-agent
+            sudo systemctl start ielts-speaking-agent
 
             # Let it settle, then require an actually-running main process. A
             # flapping/auto-restarting service must fail the deploy, not pass.
