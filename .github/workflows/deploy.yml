@@ -208,10 +208,22 @@ jobs:
               echo "$REQ_HASH" > "$HASH_FILE"
             fi
 
+            # Retire any process started by the old nohup-based deploy.
             kill $(cat /tmp/agent.pid 2>/dev/null) 2>/dev/null || true
-            sleep 2
             rm -f /tmp/agent.pid
-            nohup /home/MAHMUD/agent-venv/bin/python speaking_agent.py start > /tmp/agent.log 2>&1 &
-            echo $! > /tmp/agent.pid
+
+            # Install/refresh the systemd unit so the worker auto-restarts on
+            # crash, OOM, or reboot — then (re)start it on the latest code.
+            sudo cp deploy/ielts-speaking-agent.service /etc/systemd/system/ielts-speaking-agent.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable ielts-speaking-agent
+            sudo systemctl restart ielts-speaking-agent
+
             sleep 3
-            echo "Speaking agent deployed (PID $(cat /tmp/agent.pid))"
+            if sudo systemctl is-active --quiet ielts-speaking-agent; then
+              echo "Speaking agent active (PID $(systemctl show -p MainPID --value ielts-speaking-agent))"
+            else
+              echo "Speaking agent failed to start; recent logs:"
+              tail -n 40 /tmp/agent.log || true
+              exit 1
+            fi

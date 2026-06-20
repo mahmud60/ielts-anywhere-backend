@@ -40,6 +40,13 @@ from livekit.plugins import google as lk_google
 
 logger = logging.getLogger("ielts-speaking-agent")
 
+# Maximum speaking sessions this single worker will run concurrently. The worker
+# reports load = active_sessions / cap to LiveKit; once it crosses the threshold
+# LiveKit stops routing new rooms here, so extra users wait instead of pushing a
+# memory-constrained VM into OOM (which would kill live tests). Raise this via
+# env once the VM is sized up or additional worker replicas are added.
+MAX_CONCURRENT_SESSIONS = int(os.environ.get("AGENT_MAX_SESSIONS", "4"))
+
 PERSONAS = [
     {"name": "Sarah",   "voice": "nova",    "gender": "female"},
     {"name": "Claire",  "voice": "shimmer",  "gender": "female"},
@@ -133,6 +140,41 @@ async def entrypoint(ctx: JobContext) -> None:
     logger.info("AgentSession started for room: %s", ctx.room.name)
 
 
+def _compute_load(*args) -> float:
+    """Report worker load as a fraction of the concurrency cap.
+
+    livekit-agents invokes this with the worker/server instance (newer API) or
+    with no arguments (older API), so accept *args. If the active-job list isn't
+    exposed under the expected name on the installed version, fall back to 0.0
+    (no cap) rather than raising and taking the worker down.
+    """
+    worker = args[0] if args else None
+    jobs = getattr(worker, "active_jobs", None)
+    if jobs is None:
+        return 0.0
+    return min(len(jobs) / MAX_CONCURRENT_SESSIONS, 1.0)
+
+
+def _build_worker_options() -> WorkerOptions:
+    """Construct WorkerOptions, passing concurrency/memory tuning only if the
+    installed livekit-agents version accepts each kwarg. The worker API has
+    shifted across 1.x, so we introspect the signature instead of risking a
+    startup crash on an unknown argument.
+    """
+    import inspect
+
+    opts = {"entrypoint_fnc": entrypoint}
+    supported = set(inspect.signature(WorkerOptions).parameters)
+    for key, value in (
+        ("load_fnc", _compute_load),       # count-based load => graceful shed
+        ("load_threshold", 0.75),          # stop accepting near the cap
+        ("num_idle_processes", 1),         # keep idle memory low on a small VM
+    ):
+        if key in supported:
+            opts[key] = value
+    return WorkerOptions(**opts)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(_build_worker_options())

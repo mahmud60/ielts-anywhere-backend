@@ -1,0 +1,29 @@
+[Unit]
+Description=IELTS Speaking Agent (LiveKit voice worker)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=MAHMUD
+WorkingDirectory=/home/MAHMUD/ielts-anywhere-backend
+# Reads LIVEKIT_*/DEEPGRAM/OPENAI keys from .env in WorkingDirectory via
+# python-dotenv (load_dotenv() in speaking_agent.py).
+ExecStart=/home/MAHMUD/agent-venv/bin/python speaking_agent.py start
+
+# Auto-restart on crash, OOM, or VM reboot — the single most important fix:
+# previously a nohup process that died stayed down until the next deploy.
+Restart=always
+RestartSec=3
+
+# Backstop for a dedicated ~2GB agent VM: cap the service's memory so the kernel
+# sheds an individual job subprocess under pressure instead of locking up the
+# whole VM. Tune alongside AGENT_MAX_SESSIONS and the VM size.
+MemoryMax=1700M
+
+# Keep logs where the deploy script and existing ops habits look for them.
+StandardOutput=append:/tmp/agent.log
+StandardError=append:/tmp/agent.log
+
+[Install]
+WantedBy=multi-user.target
