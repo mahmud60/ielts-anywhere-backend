@@ -132,6 +132,15 @@ All settings live in `app/core/config.py` as a Pydantic `BaseSettings` class.
 | `RESEND_API_KEY` | `str` | `""` | Resend API key (omit to stub-mode to stdout) |
 | `FROM_EMAIL` | `str` | `"noreply@ieltsanywhere.app"` | Sender address |
 
+### Analytics (PostHog)
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `POSTHOG_API_KEY` | `str` | `""` | PostHog Project API Key. Blank disables server-side events (no-op). Same key the frontend uses. |
+| `POSTHOG_HOST` | `str` | `"https://us.i.posthog.com"` | PostHog ingestion host (`us` or `eu`). |
+
+Server-side events are sent from `app/services/analytics.py` (keyed by Firebase UID to stitch with the frontend's identified person): `subscription_activated`, `subscription_cancelled`, `referral_converted` — all fired from the LemonSqueezy webhook.
+
 ### Time Limits
 
 | Variable | Type | Default | Equivalent |

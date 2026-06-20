@@ -13,6 +13,7 @@ from app.models.user import User, SubscriptionTier
 from app.models.affiliate import Affiliate, AffiliateReferral
 from app.core.config import settings
 from app.api.routes.auth import get_current_user
+from app.services import analytics
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -161,7 +162,15 @@ async def lemonsqueezy_webhook(
         status = attributes.get("status", "")
         # For subscriptions: only activate if status is active
         if event_name == "order_created" or status in ("active", "on_trial"):
+            was_pro = user.subscription == SubscriptionTier.pro
             user.subscription = SubscriptionTier.pro
+            # Authoritative conversion event (keyed by Firebase UID to match the
+            # frontend's identified person). Only fire on the actual free→pro flip.
+            if not was_pro:
+                analytics.capture(user.firebase_uid, "subscription_activated", {
+                    "lemonsqueezy_event": event_name,
+                    "plan": "pro",
+                })
 
             # Record / upgrade affiliate referral
             ref_code = custom_data.get("ref_code", "").strip().upper()
@@ -175,6 +184,11 @@ async def lemonsqueezy_webhook(
                     total_cents = attributes.get("total", 0) or 0
                     order_amount = round(total_cents / 100, 2)
                     commission = round(order_amount * float(affiliate.commission_rate), 2)
+                    analytics.capture(user.firebase_uid, "referral_converted", {
+                        "ref_code": ref_code,
+                        "order_amount": order_amount,
+                        "commission": commission,
+                    })
 
                     # Prefer upgrading an existing signup-stage referral for this user
                     existing_ref = (await db.execute(
@@ -206,6 +220,7 @@ async def lemonsqueezy_webhook(
     elif event_name == "subscription_cancelled":
         # Revert to free when subscription is cancelled
         user.subscription = SubscriptionTier.free
+        analytics.capture(user.firebase_uid, "subscription_cancelled", {})
 
     await db.flush()
     return {"received": True}

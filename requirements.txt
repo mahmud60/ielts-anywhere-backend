@@ -87,3 +87,6 @@ websockets==16.0
 
 # LiveKit — only the API/token library needed by FastAPI
 livekit-api>=0.6
+
+# PostHog — server-side product analytics (pinned to 3.x for a stable capture API)
+posthog>=3.0,<4

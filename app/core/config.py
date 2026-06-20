@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     FROM_EMAIL: str = "noreply@ieltsanywhere.app"
 
+    # PostHog (product analytics — server-side events). Use the project's
+    # write-only API key; same key the frontend uses.
+    POSTHOG_API_KEY: str = ""
+    POSTHOG_HOST: str = "https://us.i.posthog.com"
+
     # Time limits per module in seconds
     # Real IELTS: Listening 30min, Reading 60min, Writing 60min, Speaking 15min
     LISTENING_TIME_LIMIT: int = 1800   # 30 minutes
