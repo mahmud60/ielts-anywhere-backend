@@ -130,13 +130,16 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
         _record_feedback_state(db, str(attempt.user_id), "writing", result["overall_band"], attempt_id)
         db.commit()
 
-        user = db.get(User, attempt.user_id)
-        if user:
-            analytics.capture(user.firebase_uid, "test_completed", {
-                "module": "writing",
-                "test_id": attempt.test_id,
-                "band": result["overall_band"],
-            })
+        try:
+            user = db.get(User, attempt.user_id)
+            if user:
+                analytics.capture(user.firebase_uid, "test_completed", {
+                    "module": "writing",
+                    "test_id": attempt.test_id,
+                    "band": result["overall_band"],
+                })
+        except Exception:
+            pass  # telemetry must never fail or retry an already-completed grading
 
         _notify_module_graded(attempt_id)
 
