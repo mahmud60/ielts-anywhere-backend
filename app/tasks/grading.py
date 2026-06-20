@@ -66,7 +66,9 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
     If anything fails, retry up to 3 times then mark as "failed"
     """
     from app.models.test import TestAttempt, GradingStatus
+    from app.models.user import User
     from app.services.writing_grader import grade_writing, _count_words
+    from app.services import analytics
 
     db = _get_db_session()
     try:
@@ -127,6 +129,14 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
         attempt.improvement_tips = result["improvement_tips"]
         _record_feedback_state(db, str(attempt.user_id), "writing", result["overall_band"], attempt_id)
         db.commit()
+
+        user = db.get(User, attempt.user_id)
+        if user:
+            analytics.capture(user.firebase_uid, "test_completed", {
+                "module": "writing",
+                "test_id": attempt.test_id,
+                "band": result["overall_band"],
+            })
 
         _notify_module_graded(attempt_id)
 

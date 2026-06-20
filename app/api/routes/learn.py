@@ -17,6 +17,7 @@ from app.models.user import User, SubscriptionTier
 from app.models.test import TestAttempt, ModuleType, GradingStatus
 from app.models.vocabulary import VocabularyWord
 from app.api.routes.auth import get_current_user
+from app.services import analytics
 from app.core.config import settings
 
 router = APIRouter(prefix="/learn", tags=["learn"])
@@ -154,9 +155,11 @@ Reply ONLY valid JSON, no markdown. Generate 4 exercises and 3 phrases:
     if not response.content:
         raise HTTPException(502, "AI returned empty response")
     try:
-        return json.loads(_clean_json(response.content[0].text))
+        result = json.loads(_clean_json(response.content[0].text))
     except json.JSONDecodeError as e:
         raise HTTPException(502, f"AI returned invalid JSON: {e}")
+    analytics.capture(current_user.firebase_uid, "practice_generated", {"type": "vocabulary"})
+    return result
 
 
 @router.post("/grammar")
@@ -200,6 +203,8 @@ Reply ONLY valid JSON, no markdown. Generate 4 exercises and 2 patterns:
     if not response.content:
         raise HTTPException(502, "AI returned empty response")
     try:
-        return json.loads(_clean_json(response.content[0].text))
+        result = json.loads(_clean_json(response.content[0].text))
     except json.JSONDecodeError as e:
         raise HTTPException(502, f"AI returned invalid JSON: {e}")
+    analytics.capture(current_user.firebase_uid, "practice_generated", {"type": "grammar"})
+    return result

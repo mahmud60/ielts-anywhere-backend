@@ -26,6 +26,7 @@ from app.schemas.speaking import (
 )
 from app.api.routes.auth import get_current_user
 from app.tasks.grading import grade_speaking_task
+from app.services import analytics
 from app.core.config import settings
 
 router = APIRouter(prefix="/speaking", tags=["speaking"])
@@ -328,6 +329,15 @@ async def submit_speaking(
         "pronunciation": result["pronunciation"].get("errors", []),
     }
     attempt.completed_at = datetime.now(timezone.utc)
+
+    analytics.capture(current_user.firebase_uid, "test_completed", {
+        "module": "speaking",
+        "band": result["overall_band"],
+        "fluency_coherence": result["fluency_coherence"]["band"],
+        "lexical_resource": result["lexical_resource"]["band"],
+        "grammatical_range": result["grammatical_range"]["band"],
+        "pronunciation": result["pronunciation"]["band"],
+    })
 
     # Link to test session if provided
     if body.test_session_id:

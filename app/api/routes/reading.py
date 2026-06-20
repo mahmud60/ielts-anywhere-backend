@@ -17,6 +17,7 @@ from app.schemas.reading import (
 from app.api.routes.auth import get_current_user
 from app.services.reading_scorer import score_answer, calculate_band, generate_tips
 from app.services.feedback_gating import should_generate_llm_feedback
+from app.services import analytics
 from app.tasks.grading import generate_feedback_task
 from app.models.user import SubscriptionTier
 
@@ -241,6 +242,15 @@ async def submit_reading(
     )
     db.add(attempt)
     await db.flush()
+
+    analytics.capture(current_user.firebase_uid, "test_completed", {
+        "module": "reading",
+        "test_id": str(body.test_id),
+        "test_title": test.title,
+        "band": overall_band,
+        "correct": total_correct,
+        "total": total_questions,
+    })
 
     # Queue LLM feedback if the gate passes (first attempt, score changed, or 5+ since last)
     if await should_generate_llm_feedback(db, current_user.id, "reading", overall_band):

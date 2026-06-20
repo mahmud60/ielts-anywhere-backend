@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.test import TestAttempt, ModuleType, GradingStatus
 from app.models.listening import ListeningTest, ListeningSection, ListeningSubsection
 from app.models.ielts_test import IeltsTest, TestSession
+from app.services import analytics
 from app.schemas.listening import (
     SectionOut,
     SubmitListeningRequest,
@@ -253,6 +254,15 @@ async def submit_listening(
     )
     db.add(attempt)
     await db.flush()
+
+    analytics.capture(current_user.firebase_uid, "test_completed", {
+        "module": "listening",
+        "test_id": str(body.test_id),
+        "test_title": test.title,
+        "band": overall_band,
+        "correct": total_correct,
+        "total": total_questions,
+    })
 
     # Queue LLM feedback if the gate passes (first attempt, score changed, or 5+ since last)
     if await should_generate_llm_feedback(db, current_user.id, "listening", overall_band):
