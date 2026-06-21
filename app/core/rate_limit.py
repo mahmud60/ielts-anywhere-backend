@@ -29,7 +29,14 @@ def _get_client():
     if _redis is None:
         import redis.asyncio as redis_async
 
-        kwargs = {"decode_responses": True}
+        kwargs = {
+            "decode_responses": True,
+            # Fail fast so a Redis outage can't hang a submit — the limiter is
+            # fail-open, so a quick error just means the request is allowed.
+            "socket_connect_timeout": 2,
+            "socket_timeout": 2,
+            "retry_on_timeout": False,
+        }
         if settings.REDIS_URL.startswith("rediss://"):
             kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
         _redis = redis_async.from_url(settings.REDIS_URL, **kwargs)
