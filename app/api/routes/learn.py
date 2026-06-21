@@ -18,6 +18,7 @@ from app.models.test import TestAttempt, ModuleType, GradingStatus
 from app.models.vocabulary import VocabularyWord
 from app.api.routes.auth import get_current_user
 from app.services import analytics
+from app.services.ai_usage import add_usage, anthropic_tokens
 from app.core.rate_limit import rate_limit
 from app.core.config import settings
 
@@ -160,6 +161,9 @@ Reply ONLY valid JSON, no markdown. Generate 4 exercises and 3 phrases:
     except json.JSONDecodeError as e:
         raise HTTPException(502, f"AI returned invalid JSON: {e}")
     analytics.capture(current_user.firebase_uid, "practice_generated", {"type": "vocabulary"})
+    _in, _out = anthropic_tokens(response)
+    add_usage(db, module="vocabulary", model="claude-haiku-4-5-20251001",
+              input_tokens=_in, output_tokens=_out, user_id=current_user.id)
     return result
 
 
@@ -208,4 +212,7 @@ Reply ONLY valid JSON, no markdown. Generate 4 exercises and 2 patterns:
     except json.JSONDecodeError as e:
         raise HTTPException(502, f"AI returned invalid JSON: {e}")
     analytics.capture(current_user.firebase_uid, "practice_generated", {"type": "grammar"})
+    _in, _out = anthropic_tokens(response)
+    add_usage(db, module="grammar", model="claude-haiku-4-5-20251001",
+              input_tokens=_in, output_tokens=_out, user_id=current_user.id)
     return result

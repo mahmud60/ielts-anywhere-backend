@@ -91,4 +91,9 @@ Student response ({_count_words(task2_response)} words):
         t["band"] = _round_band(t["band"])
 
     result["overall_band"] = _round_band(result["overall_band"])
+
+    # Surface token usage so the caller (Celery task) can log it for the admin
+    # AI-usage view. Stripped before the result is persisted.
+    from app.services.ai_usage import anthropic_tokens
+    result["_usage"] = anthropic_tokens(response)
     return result

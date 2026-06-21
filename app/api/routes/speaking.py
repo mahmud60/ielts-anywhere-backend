@@ -336,6 +336,11 @@ async def submit_speaking(
     }
     attempt.completed_at = datetime.now(timezone.utc)
 
+    from app.services.ai_usage import add_usage, anthropic_tokens
+    _in_tok, _out_tok = anthropic_tokens(msg)
+    add_usage(db, module="speaking", model="claude-sonnet-4-6",
+              input_tokens=_in_tok, output_tokens=_out_tok, user_id=current_user.id)
+
     analytics.capture(current_user.firebase_uid, "test_completed", {
         "module": "speaking",
         "band": result["overall_band"],

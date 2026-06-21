@@ -81,6 +81,7 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
         if not attempt:
             return
         attempt.status = GradingStatus.grading
+        attempt_user_id = attempt.user_id
         db.commit()
 
         # Step 2: Call Claude Haiku
@@ -91,6 +92,13 @@ def grade_writing_task(self, attempt_id: str, task_data: dict):
             task2_response=task_data["task2_response"],
             task1_type=task_data.get("task1_type", "task1_academic"),
         )
+
+        # Log token usage for the admin AI-usage view (stripped from result so it
+        # isn't persisted). add_usage stages a row on the task's session.
+        from app.services.ai_usage import add_usage
+        _in, _out = result.pop("_usage", (0, 0))
+        add_usage(db, module="writing", model="claude-haiku-4-5-20251001",
+                  input_tokens=_in, output_tokens=_out, user_id=attempt_user_id)
 
         # Step 3: Build subscores structure for storage
         t1 = result["task1"]

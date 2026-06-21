@@ -66,6 +66,55 @@ async def get_stats(
     }
 
 
+@router.get("/ai-usage")
+async def get_ai_usage(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """AI token usage + estimated cost, for the admin AI-usage view."""
+    from app.models.ai_usage import AIUsage
+
+    totals = (await db.execute(select(
+        func.coalesce(func.sum(AIUsage.cost_usd), 0),
+        func.coalesce(func.sum(AIUsage.input_tokens), 0),
+        func.coalesce(func.sum(AIUsage.output_tokens), 0),
+        func.count(AIUsage.id),
+    ))).one()
+
+    by_model = (await db.execute(
+        select(AIUsage.model, func.sum(AIUsage.cost_usd), func.count(AIUsage.id))
+        .group_by(AIUsage.model).order_by(func.sum(AIUsage.cost_usd).desc())
+    )).all()
+
+    by_module = (await db.execute(
+        select(AIUsage.module, func.sum(AIUsage.cost_usd), func.count(AIUsage.id))
+        .group_by(AIUsage.module).order_by(func.sum(AIUsage.cost_usd).desc())
+    )).all()
+
+    day = func.date_trunc("day", AIUsage.created_at)
+    by_day = (await db.execute(
+        select(day, func.sum(AIUsage.cost_usd), func.count(AIUsage.id))
+        .group_by(day).order_by(day.desc()).limit(30)
+    )).all()
+
+    top_users = (await db.execute(
+        select(User.email, func.sum(AIUsage.cost_usd), func.count(AIUsage.id))
+        .join(User, User.id == AIUsage.user_id)
+        .group_by(User.email).order_by(func.sum(AIUsage.cost_usd).desc()).limit(10)
+    )).all()
+
+    return {
+        "total_cost_usd": round(float(totals[0]), 4),
+        "total_input_tokens": int(totals[1]),
+        "total_output_tokens": int(totals[2]),
+        "total_calls": int(totals[3]),
+        "by_model": [{"model": m, "cost_usd": round(float(c), 4), "calls": int(n)} for m, c, n in by_model],
+        "by_module": [{"module": m, "cost_usd": round(float(c), 4), "calls": int(n)} for m, c, n in by_module],
+        "by_day": [{"day": d.date().isoformat() if d else None, "cost_usd": round(float(c), 4), "calls": int(n)} for d, c, n in by_day],
+        "top_users": [{"email": e, "cost_usd": round(float(c), 4), "calls": int(n)} for e, c, n in top_users],
+    }
+
+
 # ── User management ───────────────────────────────────────────────────────────
 
 @router.get("/users")
