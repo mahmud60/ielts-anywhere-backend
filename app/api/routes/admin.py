@@ -115,6 +115,94 @@ async def get_ai_usage(
     }
 
 
+@router.get("/test-analytics")
+async def get_test_analytics(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Test activity: volume by module, most popular tests, most active users."""
+    import uuid as _uuid
+    from collections import defaultdict
+    from app.models.test import TestAttempt, ModuleType
+    from app.models.speaking_attempt import SpeakingAttempt
+    from app.models.ielts_test import SessionStatus
+
+    total_attempts = (await db.execute(select(func.count(TestAttempt.id)))).scalar() or 0
+    speaking_sessions = (await db.execute(select(func.count(SpeakingAttempt.id)))).scalar() or 0
+    completed_mocks = (await db.execute(
+        select(func.count(TestSession.id)).where(TestSession.status == SessionStatus.completed)
+    )).scalar() or 0
+
+    by_module = (await db.execute(
+        select(TestAttempt.module, func.count(TestAttempt.id), func.avg(TestAttempt.overall_band))
+        .group_by(TestAttempt.module).order_by(func.count(TestAttempt.id).desc())
+    )).all()
+
+    day = func.date_trunc("day", TestAttempt.created_at)
+    by_day = (await db.execute(
+        select(day, func.count(TestAttempt.id)).group_by(day).order_by(day.desc()).limit(30)
+    )).all()
+
+    popular = (await db.execute(
+        select(TestAttempt.module, TestAttempt.test_id, func.count(TestAttempt.id))
+        .where(TestAttempt.test_id.isnot(None))
+        .group_by(TestAttempt.module, TestAttempt.test_id)
+        .order_by(func.count(TestAttempt.id).desc()).limit(15)
+    )).all()
+
+    # Resolve each popular test_id to its title (test_id is stored as a string).
+    model_by_module = {
+        ModuleType.listening: ListeningTest,
+        ModuleType.reading: ReadingTest,
+        ModuleType.writing: WritingTest,
+        ModuleType.speaking: SpeakingTest,
+    }
+    ids_by_module = defaultdict(list)
+    for mod, tid, _cnt in popular:
+        ids_by_module[mod].append(tid)
+    title_map = {}
+    for mod, ids in ids_by_module.items():
+        model = model_by_module.get(mod)
+        if model is None:
+            continue
+        valid = []
+        for t in ids:
+            try:
+                valid.append(_uuid.UUID(str(t)))
+            except (ValueError, TypeError):
+                pass
+        if not valid:
+            continue
+        rows = (await db.execute(select(model.id, model.title).where(model.id.in_(valid)))).all()
+        for tid, title in rows:
+            title_map[(mod, str(tid))] = title
+
+    active_users = (await db.execute(
+        select(User.email, func.count(TestAttempt.id))
+        .join(User, User.id == TestAttempt.user_id)
+        .group_by(User.email).order_by(func.count(TestAttempt.id).desc()).limit(15)
+    )).all()
+
+    def _mod(m):
+        return m.value if hasattr(m, "value") else str(m)
+
+    return {
+        "total_attempts": int(total_attempts),
+        "speaking_sessions": int(speaking_sessions),
+        "completed_full_mocks": int(completed_mocks),
+        "by_module": [
+            {"module": _mod(m), "count": int(c), "avg_band": round(float(b), 1) if b is not None else None}
+            for m, c, b in by_module
+        ],
+        "by_day": [{"day": d.date().isoformat() if d else None, "count": int(c)} for d, c in by_day],
+        "popular_tests": [
+            {"module": _mod(m), "title": title_map.get((m, str(t))) or "—", "count": int(c)}
+            for m, t, c in popular
+        ],
+        "active_users": [{"email": e, "attempts": int(c)} for e, c in active_users],
+    }
+
+
 # ── User management ───────────────────────────────────────────────────────────
 
 @router.get("/users")
