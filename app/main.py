@@ -48,16 +48,14 @@ app = FastAPI(title=settings.APP_NAME, docs_url="/docs", lifespan=lifespan)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     capture_exception(exc)
     print("UNHANDLED EXCEPTION:", traceback.format_exc())
-    return JSONResponse(status_code=500, content={"detail": str(exc), "type": type(exc).__name__})
+    # Don't leak internal error details (DB messages, stack info) to clients in
+    # production — the full exception is in the logs and Sentry.
+    detail = str(exc) if settings.DEBUG else "Internal server error"
+    return JSONResponse(status_code=500, content={"detail": detail})
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://ielts-anywhere-frontend.vercel.app",
-        "https://ieltsanywhere.com"
-    ],
+    allow_origins=[o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

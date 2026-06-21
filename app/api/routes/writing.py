@@ -13,6 +13,7 @@ from app.schemas.writing import (
     WritingResultOut, TaskScore,
 )
 from app.api.routes.auth import get_current_user
+from app.core.rate_limit import rate_limit
 from app.tasks.grading import grade_writing_task
 
 router = APIRouter(prefix="/writing", tags=["writing"])
@@ -94,7 +95,8 @@ async def get_test_for_session(
     return test
 
 
-@router.post("/submit", response_model=WritingResultOut, status_code=202)
+@router.post("/submit", response_model=WritingResultOut, status_code=202,
+             dependencies=[Depends(rate_limit("writing_submit", 30))])
 async def submit_writing(
     body: SubmitWritingRequest,
     db: AsyncSession = Depends(get_db),

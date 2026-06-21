@@ -8,6 +8,17 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str
     REDIS_URL: str
 
+    # Comma-separated list of allowed CORS origins (frontend domains).
+    ALLOWED_ORIGINS: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "https://ielts-anywhere-frontend.vercel.app,https://ieltsanywhere.com"
+    )
+
+    # DB connection pool per process — keep bounded so Cloud Run scaling does not
+    # exhaust the Postgres connection limit (use the Supabase pooler for headroom).
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
+
     FIREBASE_SERVICE_ACCOUNT_PATH: str = 'firebase-service-account.json'
 
     # LemonSqueezy

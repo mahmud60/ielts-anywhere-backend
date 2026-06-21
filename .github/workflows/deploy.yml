@@ -61,11 +61,29 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/ielts-images/fastapi:${{ steps.tag.outputs.tag }}
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/ielts-images/fastapi:latest
 
+  # ── 1b. Run DB migrations — gates the API + Celery deploys ─────────────────
+  migrate:
+    name: Run DB migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install migration deps
+        run: pip install "alembic==1.18.4" "SQLAlchemy==2.0.49" "psycopg2-binary==2.9.11" "pydantic==2.12.5" "pydantic-settings==2.13.1" "python-dotenv==1.2.2"
+      - name: alembic upgrade head
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+        run: alembic upgrade head
+
   # ── 2. Deploy FastAPI to Cloud Run ─────────────────────────────────────────
   deploy-api:
     name: Deploy FastAPI to Cloud Run
     runs-on: ubuntu-latest
-    needs: build-api
+    needs: [build-api, migrate]
     permissions:
       contents: read
       id-token: write
@@ -106,7 +124,7 @@ jobs:
   deploy-celery:
     name: Deploy Celery to VM
     runs-on: ubuntu-latest
-    needs: build-api
+    needs: [build-api, migrate]
 
     steps:
       - name: Deploy via SSH

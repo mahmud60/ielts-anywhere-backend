@@ -18,6 +18,7 @@ from app.models.test import TestAttempt, ModuleType, GradingStatus
 from app.models.vocabulary import VocabularyWord
 from app.api.routes.auth import get_current_user
 from app.services import analytics
+from app.core.rate_limit import rate_limit
 from app.core.config import settings
 
 router = APIRouter(prefix="/learn", tags=["learn"])
@@ -115,7 +116,7 @@ async def list_vocabulary_words(
     ]
 
 
-@router.post("/vocabulary")
+@router.post("/vocabulary", dependencies=[Depends(rate_limit("learn_vocabulary", 40))])
 async def get_vocabulary_exercises(
     lang: str = Query("en"),
     db: AsyncSession = Depends(get_db),
@@ -162,7 +163,7 @@ Reply ONLY valid JSON, no markdown. Generate 4 exercises and 3 phrases:
     return result
 
 
-@router.post("/grammar")
+@router.post("/grammar", dependencies=[Depends(rate_limit("learn_grammar", 40))])
 async def get_grammar_exercises(
     lang: str = Query("en"),
     db: AsyncSession = Depends(get_db),

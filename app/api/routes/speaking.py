@@ -27,6 +27,7 @@ from app.schemas.speaking import (
 from app.api.routes.auth import get_current_user
 from app.tasks.grading import grade_speaking_task
 from app.services import analytics
+from app.core.rate_limit import rate_limit
 from app.core.config import settings
 
 router = APIRouter(prefix="/speaking", tags=["speaking"])
@@ -144,7 +145,7 @@ async def get_attempt(
     )
 
 
-@router.post("/transcribe")
+@router.post("/transcribe", dependencies=[Depends(rate_limit("speaking_transcribe", 60))])
 async def transcribe_audio(
     audio: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
@@ -152,7 +153,12 @@ async def transcribe_audio(
     if not settings.OPENAI_API_KEY:
         return {"transcript": ""}
 
+    MAX_AUDIO_BYTES = 25 * 1024 * 1024  # Whisper's own upload limit
+    if audio.size and audio.size > MAX_AUDIO_BYTES:
+        raise HTTPException(413, "Audio file too large (max 25 MB)")
     content = await audio.read()
+    if len(content) > MAX_AUDIO_BYTES:
+        raise HTTPException(413, "Audio file too large (max 25 MB)")
     filename = audio.filename or "recording.webm"
     mime = audio.content_type or "audio/webm"
 
@@ -165,7 +171,7 @@ async def transcribe_audio(
         )
 
     if not res.is_success:
-        raise HTTPException(502, f"Whisper error: {res.text}")
+        raise HTTPException(502, "Transcription service error")
 
     return {"transcript": res.json().get("text", "")}
 
@@ -267,7 +273,7 @@ _SCORE_SYSTEM = (
 )
 
 
-@router.post("/submit")
+@router.post("/submit", dependencies=[Depends(rate_limit("speaking_submit", 20))])
 async def submit_speaking(
     body: _SubmitBody,
     db: AsyncSession = Depends(get_db),
