@@ -2,7 +2,7 @@ from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
@@ -89,6 +89,20 @@ async def list_reading_tests(
         .order_by(ReadingTest.test_order)
     )
     tests = result.scalars().all()
+
+    # Best band per test for this user, so the list arrives already showing the
+    # completed/band state — no separate attempts request from the client.
+    band_rows = await db.execute(
+        select(TestAttempt.test_id, func.max(TestAttempt.overall_band))
+        .where(
+            TestAttempt.user_id == current_user.id,
+            TestAttempt.module == ModuleType.reading,
+            TestAttempt.status == GradingStatus.complete,
+        )
+        .group_by(TestAttempt.test_id)
+    )
+    best_bands = {row[0]: row[1] for row in band_rows.all()}
+
     return [
         {
             "id": str(t.id),
@@ -100,6 +114,7 @@ async def list_reading_tests(
                 for p in t.passages
                 for q in p.question_groups
             ),
+            "best_band": best_bands.get(str(t.id)),
         }
         for t in tests
     ]
