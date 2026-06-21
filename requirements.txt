@@ -90,3 +90,6 @@ livekit-api>=0.6
 
 # PostHog — server-side product analytics (pinned to 3.x for a stable capture API)
 posthog>=3.0,<4
+
+# Sentry — error monitoring (FastAPI + Celery integrations auto-enable)
+sentry-sdk[fastapi]>=2.0,<3

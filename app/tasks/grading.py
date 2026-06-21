@@ -1,6 +1,7 @@
 import platform
 from celery import Celery
 from app.core.config import settings
+from app.core.sentry import init_sentry
 import ssl
 
 celery_app = Celery(
@@ -23,6 +24,9 @@ celery_app.conf.update(
     broker_use_ssl=_ssl_opts,
     redis_backend_use_ssl=_ssl_opts,
 )
+
+# Capture failed tasks (CeleryIntegration auto-enables). No-op without SENTRY_DSN.
+init_sentry()
 
 
 def _get_db_session():

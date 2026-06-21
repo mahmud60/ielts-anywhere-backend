@@ -3,11 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from app.core.config import settings
+from app.core.sentry import init_sentry, capture_exception
 from app.api.routes import auth, listening, reading, writing, speaking, sessions, admin, payments, dashboard, learn
 from app.api.routes import affiliates
 import asyncio
 import traceback
 from datetime import datetime, timezone, timedelta
+
+init_sentry()
 
 
 async def _cleanup_expired_sessions():
@@ -27,7 +30,8 @@ async def _cleanup_expired_sessions():
                     )
                 )
                 await db.commit()
-        except Exception:
+        except Exception as exc:
+            capture_exception(exc)
             print("Session cleanup error:", traceback.format_exc())
 
 
@@ -42,6 +46,7 @@ app = FastAPI(title=settings.APP_NAME, docs_url="/docs", lifespan=lifespan)
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    capture_exception(exc)
     print("UNHANDLED EXCEPTION:", traceback.format_exc())
     return JSONResponse(status_code=500, content={"detail": str(exc), "type": type(exc).__name__})
 

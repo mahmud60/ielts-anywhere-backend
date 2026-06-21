@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     POSTHOG_API_KEY: str = ""
     POSTHOG_HOST: str = "https://us.i.posthog.com"
 
+    # Sentry (error monitoring). Blank disables it (no-op).
+    SENTRY_DSN: str = ""
+    SENTRY_ENVIRONMENT: str = "production"
+
     # Time limits per module in seconds
     # Real IELTS: Listening 30min, Reading 60min, Writing 60min, Speaking 15min
     LISTENING_TIME_LIMIT: int = 1800   # 30 minutes
