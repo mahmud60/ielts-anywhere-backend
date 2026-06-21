@@ -3,4 +3,6 @@ livekit-agents>=1.0
 livekit-plugins-deepgram
 livekit-plugins-openai
 livekit-plugins-google
+livekit-plugins-silero
+livekit-plugins-noise-cancellation
 livekit-api>=0.6

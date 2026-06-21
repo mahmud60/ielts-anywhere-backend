@@ -43,9 +43,18 @@ logger = logging.getLogger("ielts-speaking-agent")
 # Maximum speaking sessions this single worker will run concurrently. The worker
 # reports load = active_sessions / cap to LiveKit; once it crosses the threshold
 # LiveKit stops routing new rooms here, so extra users wait instead of pushing a
-# memory-constrained VM into OOM (which would kill live tests). Raise this via
-# env once the VM is sized up or additional worker replicas are added.
-MAX_CONCURRENT_SESSIONS = int(os.environ.get("AGENT_MAX_SESSIONS", "4"))
+# memory-constrained VM into OOM (which would kill live tests). Default lowered to
+# 3 to leave headroom for the per-session VAD + noise-cancellation models; raise
+# via env once the VM is sized up or additional worker replicas are added.
+MAX_CONCURRENT_SESSIONS = int(os.environ.get("AGENT_MAX_SESSIONS", "3"))
+
+# Seconds of silence to wait before treating the candidate's turn as finished.
+# Higher than the library default so non-native speakers can pause mid-answer
+# without the examiner jumping in. Tunable via env.
+MIN_ENDPOINTING_DELAY = float(os.environ.get("AGENT_MIN_ENDPOINTING_DELAY", "0.8"))
+# Sustained candidate speech (seconds) required to interrupt the examiner — keeps
+# short echo/backchannel ("mm", "yeah") from cutting the examiner off.
+MIN_INTERRUPTION_DURATION = float(os.environ.get("AGENT_MIN_INTERRUPTION_DURATION", "0.6"))
 
 PERSONAS = [
     {"name": "Sarah",   "voice": "nova",    "gender": "female"},
@@ -100,26 +109,50 @@ async def _publish_transcript(ctx: JobContext, role: str, text: str) -> None:
         logger.warning("Transcript publish failed: %s", exc)
 
 
+def _build_session(persona: dict, vad) -> AgentSession:
+    """Build the AgentSession with turn-detection tuning applied defensively.
+
+    `vad` (Silero) is the key fix: it endpoints on real silence instead of the
+    STT firing on every short pause, so the examiner stops talking over the
+    candidate. The endpointing/interruption delays are passed only if this
+    livekit-agents version accepts them as kwargs (the API moved to grouped
+    option objects in later releases), so we never crash on an unknown argument.
+    """
+    import inspect
+
+    kwargs = {
+        "stt": deepgram.STT(model="nova-2", api_key=os.environ["DEEPGRAM_API_KEY"]),
+        "llm": lk_openai.LLM(model="gpt-4o-mini", api_key=os.environ["OPENAI_API_KEY"]),
+        "tts": lk_openai.TTS(model="tts-1", voice=persona["voice"], api_key=os.environ["OPENAI_API_KEY"]),
+    }
+    if vad is not None:
+        kwargs["vad"] = vad
+
+    supported = set(inspect.signature(AgentSession).parameters)
+    for key, value in (
+        ("min_endpointing_delay", MIN_ENDPOINTING_DELAY),
+        ("min_interruption_duration", MIN_INTERRUPTION_DURATION),
+    ):
+        if key in supported:
+            kwargs[key] = value
+    return AgentSession(**kwargs)
+
+
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
     persona = random.choice(PERSONAS)
     logger.info("Agent joined room: %s (examiner: %s)", ctx.room.name, persona["name"])
 
-    session = AgentSession(
-        stt=deepgram.STT(
-            model="nova-2",
-            api_key=os.environ["DEEPGRAM_API_KEY"],
-        ),
-        llm=lk_openai.LLM(
-            model="gpt-4o-mini",
-            api_key=os.environ["OPENAI_API_KEY"],
-        ),
-        tts=lk_openai.TTS(
-            model="tts-1",
-            voice=persona["voice"],
-            api_key=os.environ["OPENAI_API_KEY"],
-        ),
-    )
+    # Voice-activity detection so the examiner waits for the candidate to finish
+    # (and pause to think) instead of endpointing on every brief silence.
+    vad = None
+    try:
+        from livekit.plugins import silero
+        vad = silero.VAD.load()
+    except Exception:
+        logger.warning("Silero VAD unavailable; falling back to STT endpointing", exc_info=True)
+
+    session = _build_session(persona, vad)
 
     @session.on("conversation_item_added")
     def on_item_added(event: ConversationItemAddedEvent) -> None:
@@ -132,10 +165,20 @@ async def entrypoint(ctx: JobContext) -> None:
         role = "user" if str(item.role) == "user" else "agent"
         asyncio.ensure_future(_publish_transcript(ctx, role, text.strip()))
 
+    # Background-voice cancellation strips the examiner's own voice out of the
+    # candidate's mic (the echo loop you get without headphones). Best-effort:
+    # if the model can't load, run without it rather than failing the session.
+    room_input = RoomInputOptions()
+    try:
+        from livekit.plugins import noise_cancellation
+        room_input = RoomInputOptions(noise_cancellation=noise_cancellation.BVC())
+    except Exception:
+        logger.warning("Noise cancellation unavailable; continuing without it", exc_info=True)
+
     await session.start(
         room=ctx.room,
         agent=IELTSExaminer(name=persona["name"]),
-        room_input_options=RoomInputOptions(),
+        room_input_options=room_input,
     )
     logger.info("AgentSession started for room: %s", ctx.room.name)
 
