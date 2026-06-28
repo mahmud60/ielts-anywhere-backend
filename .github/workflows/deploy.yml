@@ -166,16 +166,46 @@ jobs:
 
             pip3 install -r requirements.txt --user --quiet --no-cache-dir
             export PATH="$HOME/.local/bin:$PATH"
-            kill $(cat /tmp/celery.pid) 2>/dev/null || true
-            sleep 2
+            # Install/refresh the systemd unit so the worker auto-restarts on
+            # crash, broker outage, OOM, or reboot. Previously a nohup worker
+            # that died on a Redis blip stayed dead until the next deploy,
+            # silently halting all writing grading + feedback tips.
+            sudo cp deploy/ielts-celery.service /etc/systemd/system/ielts-celery.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable ielts-celery
+
+            # Stop the managed service, then reap the old pre-systemd nohup
+            # worker via the pidfile it used to write, so the queue isn't
+            # double-consumed. (Reap by pidfile, not `pkill -f ...worker`: this
+            # script contains that string, so pkill -f would match the deploy
+            # shell and SIGTERM the SSH session — the exit-143 bug we hit with
+            # the agent.)
+            sudo systemctl stop ielts-celery 2>/dev/null || true
+            kill "$(cat /tmp/celery.pid 2>/dev/null)" 2>/dev/null || true
             rm -f /tmp/celery.pid
-            nohup celery -A app.tasks.grading.celery_app worker \
-              --loglevel=info \
-              --concurrency=2 \
-              --pidfile=/tmp/celery.pid \
-              > /tmp/celery.log 2>&1 &
             sleep 3
-            celery -A app.tasks.grading.celery_app inspect ping 2>/dev/null && echo "Celery deployed successfully" || echo "Celery may still be starting"
+
+            sudo systemctl reset-failed ielts-celery || true
+            sudo systemctl start ielts-celery
+
+            # Settle, then require an actually-running main process — a worker
+            # that crash-loops on a bad import/config must fail the deploy.
+            sleep 6
+            state=$(systemctl show -p SubState --value ielts-celery)
+            pid=$(systemctl show -p MainPID --value ielts-celery)
+            if [ "$state" = "running" ] && [ "$pid" != "0" ]; then
+              echo "Celery worker active (PID $pid)"
+            else
+              echo "Celery worker not healthy (SubState=$state MainPID=$pid); recent logs:"
+              sudo journalctl -u ielts-celery -n 40 --no-pager || true
+              exit 1
+            fi
+
+            # Advisory: confirm the worker answers a broker ping (proves it
+            # reached Redis). Non-fatal — Restart=always + broker retry self-heal
+            # a transient hiccup, and we don't want that to fail a good deploy.
+            celery -A app.tasks.grading.celery_app inspect ping 2>/dev/null \
+              && echo "Broker ping OK" || echo "Worker up; broker ping still pending"
 
   # ── 4. Deploy Speaking Agent to VM ─────────────────────────────────────────
   deploy-agent:

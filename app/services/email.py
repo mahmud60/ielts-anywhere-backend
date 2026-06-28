@@ -103,7 +103,7 @@ def build_referral_signup_email(
       When they subscribe to Pro you'll earn <strong>{pct}% commission</strong>.
       Track all your referrals in your affiliate dashboard.
     </p>
-    <a href="https://ieltsanywhere.com/affiliate"
+    <a href="{settings.FRONTEND_URL}/affiliate"
        style="display:inline-block;margin-top:8px;padding:10px 22px;background:#0ea5e9;
               color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
       View affiliate dashboard
@@ -119,7 +119,7 @@ def build_referral_signup_email(
 
 def build_subscription_email(user_name: str, tier: str) -> tuple[str, str]:
     subject = "Welcome to IELTS Anywhere Pro!"
-    body = """
+    body = f"""
     <p style="color:#374151;font-size:15px;line-height:1.7;">
       Your Pro subscription is now active. You now have access to:
     </p>
@@ -130,7 +130,7 @@ def build_subscription_email(user_name: str, tier: str) -> tuple[str, str]:
       <li>Vocabulary and grammar practice exercises</li>
       <li>Progress tracking with band score charts</li>
     </ul>
-    <a href="https://ieltsanywhere.com/dashboard"
+    <a href="{settings.FRONTEND_URL}/dashboard"
        style="display:inline-block;margin-top:16px;padding:10px 22px;background:#0ea5e9;
               color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
       Go to dashboard

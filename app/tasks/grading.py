@@ -23,6 +23,13 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     broker_use_ssl=_ssl_opts,
     redis_backend_use_ssl=_ssl_opts,
+    # Ride out a broker (Redis) outage instead of exiting: keep retrying the
+    # connection forever, at startup and while running. Paired with the systemd
+    # unit's Restart=always, a Redis blip can never silently kill the worker —
+    # it reconnects on its own the moment the broker comes back.
+    broker_connection_retry_on_startup=True,
+    broker_connection_retry=True,
+    broker_connection_max_retries=None,
 )
 
 # Capture failed tasks (CeleryIntegration auto-enables). No-op without SENTRY_DSN.
