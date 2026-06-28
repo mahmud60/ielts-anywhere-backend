@@ -183,6 +183,13 @@ async def get_test_analytics(
         .group_by(User.email).order_by(func.count(TestAttempt.id).desc()).limit(15)
     )).all()
 
+    recent = (await db.execute(
+        select(TestAttempt.module, TestAttempt.overall_band, TestAttempt.created_at,
+               TestAttempt.subscores, User.email)
+        .join(User, User.id == TestAttempt.user_id)
+        .order_by(TestAttempt.created_at.desc()).limit(15)
+    )).all()
+
     def _mod(m):
         return m.value if hasattr(m, "value") else str(m)
 
@@ -200,6 +207,16 @@ async def get_test_analytics(
             for m, t, c in popular
         ],
         "active_users": [{"email": e, "attempts": int(c)} for e, c in active_users],
+        "recent_tests": [
+            {
+                "module": _mod(m),
+                "title": (sub or {}).get("test_title") or "—",
+                "band": float(b) if b is not None else None,
+                "email": e,
+                "at": ca.isoformat() if ca else None,
+            }
+            for m, b, ca, sub, e in recent
+        ],
     }
 
 

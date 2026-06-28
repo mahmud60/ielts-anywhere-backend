@@ -1,3 +1,4 @@
+import logging
 from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +23,8 @@ from app.tasks.grading import generate_feedback_task
 from app.models.user import SubscriptionTier
 
 router = APIRouter(prefix="/reading", tags=["reading"])
+
+logger = logging.getLogger(__name__)
 
 
 def _load_options():
@@ -288,7 +291,12 @@ async def submit_reading(
                 for q in wrong_questions[:5]
             ],
         }
-        generate_feedback_task.delay(str(attempt.id), "reading", feedback_data)
+        try:
+            generate_feedback_task.delay(str(attempt.id), "reading", feedback_data)
+        except Exception:
+            # Optional LLM feedback — never fail an already-scored submission if the
+            # Celery broker (Redis) is unreachable.
+            logger.warning("Could not queue reading feedback; returning scored result", exc_info=True)
 
     return ReadingResultOut(
         attempt_id=attempt.id,

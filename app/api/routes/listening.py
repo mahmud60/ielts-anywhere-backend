@@ -297,7 +297,12 @@ async def submit_listening(
                 for q in wrong_questions[:5]
             ],
         }
-        generate_feedback_task.delay(str(attempt.id), "listening", feedback_data)
+        try:
+            generate_feedback_task.delay(str(attempt.id), "listening", feedback_data)
+        except Exception:
+            # Optional LLM feedback — never fail an already-scored submission if the
+            # Celery broker (Redis) is unreachable.
+            logger.warning("Could not queue listening feedback; returning scored result", exc_info=True)
 
     return ListeningResultOut(
         attempt_id=attempt.id,
