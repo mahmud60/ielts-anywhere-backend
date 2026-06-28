@@ -21,11 +21,9 @@ from app.models.speaking import SpeakingTest
 from app.models.speaking_attempt import SpeakingAttempt
 from app.models.ielts_test import IeltsTest, TestSession
 from app.schemas.speaking import (
-    SpeakingTestOut, SubmitSpeakingRequest,
-    SpeakingResultOut, PartScore,
+    SpeakingTestOut, SpeakingResultOut, PartScore,
 )
 from app.api.routes.auth import get_current_user
-from app.tasks.grading import grade_speaking_task
 from app.services import analytics
 from app.core.rate_limit import rate_limit
 from app.core.config import settings

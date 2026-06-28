@@ -26,19 +26,6 @@ class SpeakingTestOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Sent from frontend on submit ──────────────────────────────────────────────
-
-class PartResponse(BaseModel):
-    part_number: int
-    # list of {question, answer} dicts — one per question in this part
-    exchanges: list[dict[str, str]]
-
-
-class SubmitSpeakingRequest(BaseModel):
-    test_id: uuid.UUID
-    part_responses: list[PartResponse]
-
-
 # ── Returned after grading ────────────────────────────────────────────────────
 
 class PartScore(BaseModel):

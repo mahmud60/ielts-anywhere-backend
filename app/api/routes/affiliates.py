@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.affiliate import Affiliate, AffiliateReferral, ReferralStatus
 from app.api.routes.auth import get_current_user
 from app.api.routes.admin import require_admin
+from app.core.config import settings
 
 router = APIRouter(tags=["affiliates"])
 
@@ -211,7 +212,7 @@ async def get_my_affiliate(
         "commission_rate": float(aff.commission_rate),
         "discount_code": aff.discount_code,
         "is_active": aff.is_active,
-        "referral_link": f"https://ieltsanywhere.com/login?ref={aff.code}",
+        "referral_link": f"{settings.FRONTEND_URL}/login?ref={aff.code}",
         "referrals": referrals_out,
         **summary,
     }

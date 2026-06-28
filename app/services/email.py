@@ -13,7 +13,7 @@ _TEMPLATE = """
     <p style="color:#6b7280;margin:0 0 24px;font-size:15px;">{subtitle}</p>
     {body}
     <p style="color:#9ca3af;font-size:12px;margin-top:32px;border-top:1px solid #f3f4f6;padding-top:16px;">
-      IELTS Anywhere · <a href="https://ieltsanywhere.com" style="color:#0ea5e9;">ieltsanywhere.com</a>
+      IELTS Anywhere · <a href="{site_url}" style="color:#0ea5e9;">{site_url}</a>
     </p>
   </div>
 </body>
@@ -22,7 +22,7 @@ _TEMPLATE = """
 
 
 def _render(title: str, subtitle: str, body: str) -> str:
-    return _TEMPLATE.format(title=title, subtitle=subtitle, body=body)
+    return _TEMPLATE.format(title=title, subtitle=subtitle, body=body, site_url=settings.FRONTEND_URL)
 
 
 def send_email_sync(to: str, subject: str, html: str) -> None:
@@ -67,7 +67,7 @@ def build_test_complete_email(
     <table style="width:100%;border-collapse:collapse;">
       {rows}
     </table>
-    <a href="https://ieltsanywhere.com/test/{session_id}"
+    <a href="{settings.FRONTEND_URL}/test/{session_id}"
        style="display:inline-block;margin-top:20px;padding:10px 22px;background:#0ea5e9;
               color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
       View full results

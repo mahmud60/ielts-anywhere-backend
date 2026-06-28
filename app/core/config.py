@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str
     REDIS_URL: str
 
+    # Canonical frontend base URL — used to build links in emails and referral
+    # links. Set to your production domain.
+    FRONTEND_URL: str = "https://ieltsanywhere.com"
+
     # Comma-separated list of allowed CORS origins (frontend domains).
     ALLOWED_ORIGINS: str = (
         "http://localhost:3000,http://127.0.0.1:3000,"
