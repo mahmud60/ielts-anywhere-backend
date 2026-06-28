@@ -166,11 +166,19 @@ jobs:
 
             pip3 install -r requirements.txt --user --quiet --no-cache-dir
             export PATH="$HOME/.local/bin:$PATH"
-            # Install/refresh the systemd unit so the worker auto-restarts on
-            # crash, broker outage, OOM, or reboot. Previously a nohup worker
-            # that died on a Redis blip stayed dead until the next deploy,
-            # silently halting all writing grading + feedback tips.
-            sudo cp deploy/ielts-celery.service /etc/systemd/system/ielts-celery.service
+            # Generate the systemd unit with the deploy user and celery path
+            # resolved LIVE. This VM runs the deploy as `deploy` (its home and
+            # ~/.local/bin path are not safely assumable), so hardcoding them in
+            # a checked-in unit file is fragile — derive them here instead. The
+            # unit makes the worker auto-restart on crash, broker outage, OOM, or
+            # reboot; previously a nohup worker that died on a Redis blip stayed
+            # dead until the next deploy, silently halting all writing grading +
+            # feedback tips.
+            RUN_USER=$(whoami)
+            CELERY_BIN=$(command -v celery)
+            [ -n "$CELERY_BIN" ] || { echo "celery not found on PATH after pip install"; exit 1; }
+            printf '[Unit]\nDescription=IELTS Celery Worker (writing grading + feedback)\nAfter=network-online.target\nWants=network-online.target\nStartLimitIntervalSec=0\n\n[Service]\nType=simple\nUser=%s\nWorkingDirectory=/home/MAHMUD/ielts-anywhere-backend\nExecStart=%s -A app.tasks.grading.celery_app worker --loglevel=info --concurrency=2\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n' "$RUN_USER" "$CELERY_BIN" | sudo tee /etc/systemd/system/ielts-celery.service >/dev/null
+            echo "Installed ielts-celery unit (User=$RUN_USER ExecStart=$CELERY_BIN)"
             sudo systemctl daemon-reload
             sudo systemctl enable ielts-celery
 
@@ -204,7 +212,7 @@ jobs:
             # Advisory: confirm the worker answers a broker ping (proves it
             # reached Redis). Non-fatal — Restart=always + broker retry self-heal
             # a transient hiccup, and we don't want that to fail a good deploy.
-            celery -A app.tasks.grading.celery_app inspect ping 2>/dev/null \
+            "$CELERY_BIN" -A app.tasks.grading.celery_app inspect ping 2>/dev/null \
               && echo "Broker ping OK" || echo "Worker up; broker ping still pending"
 
   # ── 4. Deploy Speaking Agent to VM ─────────────────────────────────────────
