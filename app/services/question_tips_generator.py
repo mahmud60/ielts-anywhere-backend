@@ -92,7 +92,7 @@ def translate_tips_to_bengali(tips: list[str]) -> list[str | None]:
     of a backfill and never stores misaligned text.
     """
     result: list[str | None] = [None] * len(tips)
-    BATCH = 20
+    BATCH = 10  # small batch: Bengali is token-heavy, so large batches overflow max_tokens and truncate the JSON
     for start in range(0, len(tips), BATCH):
         idxs = [i for i in range(start, min(start + BATCH, len(tips))) if (tips[i] or "").strip()]
         if not idxs:
@@ -107,7 +107,7 @@ def translate_tips_to_bengali(tips: list[str]) -> list[str | None]:
         try:
             resp = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             )
             text = resp.content[0].text.strip()
