@@ -12,7 +12,10 @@ celery_app = Celery(
 )
 
 _use_ssl = settings.REDIS_URL.startswith("rediss://")
-_ssl_opts = {"ssl_cert_reqs": ssl.CERT_NONE} if _use_ssl else {}
+# Validate the broker's TLS certificate against the public CA bundle (Upstash
+# uses a valid cert) — CERT_REQUIRED, not CERT_NONE, so the connection isn't
+# exposed to a man-in-the-middle.
+_ssl_opts = {"ssl_cert_reqs": ssl.CERT_REQUIRED} if _use_ssl else {}
 
 celery_app.conf.update(
     worker_pool="solo" if platform.system() == "Windows" else "prefork",

@@ -38,7 +38,7 @@ def _get_client():
             "retry_on_timeout": False,
         }
         if settings.REDIS_URL.startswith("rediss://"):
-            kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
+            kwargs["ssl_cert_reqs"] = ssl.CERT_REQUIRED  # validate broker TLS cert (no MITM)
         _redis = redis_async.from_url(settings.REDIS_URL, **kwargs)
     return _redis
 
