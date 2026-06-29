@@ -2,7 +2,6 @@ import json
 import logging
 import re
 import anthropic
-from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,8 +19,6 @@ from app.schemas.listening import (
     SubmitListeningRequest,
     ListeningResultOut, QuestionResult,
 )
-from app.services.feedback_gating import should_generate_llm_feedback
-from app.tasks.grading import generate_feedback_task
 from app.api.routes.auth import get_current_user
 from app.services.listening_scorer import score_answer, calculate_band, generate_tips
 from app.models.user import SubscriptionTier
@@ -279,30 +276,12 @@ async def submit_listening(
         "total": total_questions,
     })
 
-    # Queue LLM feedback if the gate passes (first attempt, score changed, or 5+ since last)
-    if await should_generate_llm_feedback(db, current_user.id, "listening", overall_band):
-        wrong_by_type = dict(Counter(q.question_type for q in wrong_questions))
-        feedback_data = {
-            "band": overall_band,
-            "total_wrong": len(wrong_questions),
-            "total_questions": total_questions,
-            "wrong_by_type": wrong_by_type,
-            "section_scores": section_scores,
-            "sample_wrong": [
-                {
-                    "type": q.question_type,
-                    "stem": (q.stem or "")[:120],
-                    "correct": str(q.answer_key)[:60],
-                }
-                for q in wrong_questions[:5]
-            ],
-        }
-        try:
-            generate_feedback_task.delay(str(attempt.id), "listening", feedback_data)
-        except Exception:
-            # Optional LLM feedback — never fail an already-scored submission if the
-            # Celery broker (Redis) is unreachable.
-            logger.warning("Could not queue listening feedback; returning scored result", exc_info=True)
+    # No post-submission LLM call for listening. improvement_tips above already
+    # come from generate_tips(), which uses each question's pre-generated
+    # wrong_answer_tip from the DB (admin "generate tips" step) with generic
+    # per-type fallbacks — and those same per-question tips are shown inline on
+    # wrong answers in the report. Listening submit is fully deterministic, with
+    # no Celery/Redis/LLM dependency.
 
     return ListeningResultOut(
         attempt_id=attempt.id,

@@ -885,8 +885,13 @@ submit answers
     → score_answer(question, user_answer) per question  → bool
     → calculate_band(correct, total)                    → float
     → generate_tips(wrong_questions)                    → list[str]
-    → (async, if gating passes) generate_feedback_task.delay(...)
+    → (reading only) async generate_feedback_task.delay(...) when the gate passes
 ```
+
+> **Listening** is fully deterministic — no LLM, no Celery. `generate_tips()` uses
+> each wrong question's pre-generated `wrong_answer_tip` (from the admin "generate
+> tips" step) with generic per-type fallbacks, and those per-question tips are
+> shown inline on wrong answers in the report.
 
 **`score_answer()` — question type routing:**
 
@@ -962,7 +967,7 @@ Claude model used: `claude-sonnet-4-6` (higher quality for live session evaluati
 
 ### 6.4 Feedback Gating
 
-LLM-generated tips for listening/reading are only triggered under specific conditions to control costs:
+LLM-generated tips for **reading** are only triggered under specific conditions to control costs (listening no longer uses LLM feedback — see 6.1):
 
 ```python
 # app/services/feedback_gating.py
@@ -981,7 +986,7 @@ def should_generate_llm_feedback(user, module, current_band) -> bool:
     return False
 ```
 
-When triggered, `generate_feedback_task` calls Claude Haiku to produce 3 targeted tips and overwrites the rule-based tips on the attempt. On failure, rule-based tips remain visible.
+When triggered (reading submissions only), `generate_feedback_task` calls Claude Haiku to produce 3 targeted tips and overwrites the rule-based tips on the attempt. On failure, rule-based tips remain visible.
 
 ---
 
@@ -1009,7 +1014,7 @@ celery_app.conf.update(
 |---|---|---|---|
 | `grade_writing_task` | 3 | 10s | `POST /writing/submit` |
 | `grade_speaking_task` | 3 | 10s | `POST /speaking/submit` (legacy flow) |
-| `generate_feedback_task` | 2 | 10s | `POST /listening/submit` or `/reading/submit` when gate passes |
+| `generate_feedback_task` | 2 | 10s | `POST /reading/submit` when gate passes (listening is deterministic, no LLM) |
 | `generate_question_tips_task` | 1 | 30s | `POST /admin/listening\|reading/tests/{id}/generate-tips` |
 
 ### Async Writing Flow (detailed)
