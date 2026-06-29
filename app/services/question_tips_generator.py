@@ -1,4 +1,6 @@
+import json
 import logging
+import re
 
 import anthropic
 from app.core.config import settings
@@ -78,3 +80,49 @@ def generate_reading_question_tip(
     except Exception:
         logger.warning("Reading question tip generation failed", exc_info=True)
         return ""
+
+
+def translate_tips_to_bengali(tips: list[str]) -> list[str | None]:
+    """Translate English tips to Bengali, once, for storage in the DB (so the
+    report's EN/BN toggle never triggers a read-time LLM call).
+
+    Returns a list the SAME length as the input. Each item is the Bengali
+    translation, or None if that item's batch failed / came back misaligned —
+    the caller skips None entries, so a single bad batch never blocks the rest
+    of a backfill and never stores misaligned text.
+    """
+    result: list[str | None] = [None] * len(tips)
+    BATCH = 20
+    for start in range(0, len(tips), BATCH):
+        idxs = [i for i in range(start, min(start + BATCH, len(tips))) if (tips[i] or "").strip()]
+        if not idxs:
+            continue
+        numbered = "\n".join(f"{n + 1}. {tips[i].strip()}" for n, i in enumerate(idxs))
+        prompt = (
+            "Translate each of these IELTS listening improvement tips into Bengali (বাংলা).\n"
+            "Keep IELTS-specific terms (band scores, module names, grammatical terms) in English.\n"
+            "Reply ONLY with a JSON array of translated strings, same order, no markdown:\n\n"
+            f"{numbered}"
+        )
+        try:
+            resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=4096,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = resp.content[0].text.strip()
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text).strip()
+            arr = json.loads(text)
+        except Exception:
+            logger.warning("Bengali tip translation batch failed", exc_info=True)
+            continue
+        if not (isinstance(arr, list) and len(arr) == len(idxs)):
+            logger.warning("Bengali translation returned %s items, expected %s",
+                           len(arr) if isinstance(arr, list) else "?", len(idxs))
+            continue
+        for n, i in enumerate(idxs):
+            val = str(arr[n]).strip()
+            if val:
+                result[i] = val
+    return result

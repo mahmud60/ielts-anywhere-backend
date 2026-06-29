@@ -686,6 +686,18 @@ async def generate_listening_tips(
     return {"status": "queued", "test_id": test_id, "module": "listening"}
 
 
+@router.post("/listening/translate-tips", status_code=202)
+async def translate_listening_tips(
+    overwrite: bool = False,
+    _: User = Depends(require_admin),
+):
+    """Backfill Bengali translations for every existing listening wrong_answer_tip.
+    Run once after deploy; per-test generate-tips also fills BN going forward."""
+    from app.tasks.grading import translate_listening_tips_task
+    translate_listening_tips_task.delay(overwrite)
+    return {"status": "queued", "module": "listening", "overwrite": overwrite}
+
+
 # ── Reading management ────────────────────────────────────────────────────────
 
 from app.models.reading import (

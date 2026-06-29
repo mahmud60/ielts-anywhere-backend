@@ -206,7 +206,8 @@ GET /writing/attempts/{id}   ← frontend polls
 | `grade_writing_task` | Writing submit | Claude grades 2 tasks, updates TestAttempt |
 | `grade_speaking_task` | Speaking submit | Claude grades 3 parts, updates TestAttempt |
 | `generate_feedback_task` | Reading submit | LLM upgrades rule-based tips (gated). Listening is deterministic — no LLM. |
-| `generate_question_tips_task` | Admin action | Pre-generates `wrong_answer_tip` for all questions |
+| `generate_question_tips_task` | Admin action | Pre-generates `wrong_answer_tip` (+ Bengali `wrong_answer_tip_bn` for listening) for all questions |
+| `translate_listening_tips_task` | Admin action | Backfills Bengali `wrong_answer_tip_bn` for all existing listening questions |
 | `_notify_module_graded` | After grading | Sends completion email via Resend |
 
 Retry policy: `max_retries=3`, 10s countdown between retries.

@@ -888,10 +888,15 @@ submit answers
     → (reading only) async generate_feedback_task.delay(...) when the gate passes
 ```
 
-> **Listening** is fully deterministic — no LLM, no Celery. `generate_tips()` uses
-> each wrong question's pre-generated `wrong_answer_tip` (from the admin "generate
+> **Listening** is fully deterministic at submit time — no LLM, no Celery. `generate_tips()`
+> uses each wrong question's pre-generated `wrong_answer_tip` (from the admin "generate
 > tips" step) with generic per-type fallbacks, and those per-question tips are
 > shown inline on wrong answers in the report.
+>
+> Bengali tips are **pre-translated and stored** in `listening_questions.wrong_answer_tip_bn`
+> (by `generate_question_tips_task` / `translate_listening_tips_task`), so the report's
+> EN/BN toggle (`GET /listening/attempts/{id}?lang=bn`) is served straight from the DB
+> with no read-time LLM call.
 
 **`score_answer()` — question type routing:**
 
@@ -1015,7 +1020,8 @@ celery_app.conf.update(
 | `grade_writing_task` | 3 | 10s | `POST /writing/submit` |
 | `grade_speaking_task` | 3 | 10s | `POST /speaking/submit` (legacy flow) |
 | `generate_feedback_task` | 2 | 10s | `POST /reading/submit` when gate passes (listening is deterministic, no LLM) |
-| `generate_question_tips_task` | 1 | 30s | `POST /admin/listening\|reading/tests/{id}/generate-tips` |
+| `generate_question_tips_task` | 1 | 30s | `POST /admin/listening\|reading/tests/{id}/generate-tips` (also fills Bengali `wrong_answer_tip_bn` for listening) |
+| `translate_listening_tips_task` | 1 | 30s | `POST /admin/listening/translate-tips` — backfill Bengali tips for all listening questions |
 
 ### Async Writing Flow (detailed)
 

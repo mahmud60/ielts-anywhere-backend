@@ -85,5 +85,6 @@ class ListeningQuestion(Base):
     answer_key = Column(JSON, nullable=True)
     explanation = Column(Text, nullable=True)
     wrong_answer_tip = Column(Text, nullable=True)
+    wrong_answer_tip_bn = Column(Text, nullable=True)  # pre-translated Bengali tip (DB-served, no read-time LLM)
 
     subsection = relationship("ListeningSubsection", back_populates="questions")

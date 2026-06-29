@@ -1,3 +1,4 @@
+import logging
 import platform
 from celery import Celery
 from app.core.config import settings
@@ -34,6 +35,8 @@ celery_app.conf.update(
 
 # Capture failed tasks (CeleryIntegration auto-enables). No-op without SENTRY_DSN.
 init_sentry()
+
+logger = logging.getLogger(__name__)
 
 
 def _get_db_session():
@@ -310,6 +313,36 @@ def _notify_module_graded(attempt_id: str) -> None:
     finally:
         db.close()
 
+def _translate_listening_tips(db, questions, overwrite: bool = False) -> int:
+    """Fill wrong_answer_tip_bn for listening questions that already have an
+    English wrong_answer_tip. Best-effort and chunk-committed, so a partial
+    failure keeps prior progress and never disturbs the English tips."""
+    from app.services.question_tips_generator import translate_tips_to_bengali
+
+    pending = [
+        q for q in questions
+        if q.wrong_answer_tip and (overwrite or not q.wrong_answer_tip_bn)
+    ]
+    if not pending:
+        return 0
+
+    translated = 0
+    CHUNK = 40
+    for i in range(0, len(pending), CHUNK):
+        group = pending[i:i + CHUNK]
+        bn = translate_tips_to_bengali([q.wrong_answer_tip for q in group])
+        for q, t in zip(group, bn):
+            if t:
+                q.wrong_answer_tip_bn = t
+                translated += 1
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.warning("Commit failed during Bengali tip backfill", exc_info=True)
+    return translated
+
+
 @celery_app.task(bind=True, max_retries=1, default_retry_delay=30)
 def generate_question_tips_task(self, test_id: str, module: str, overwrite: bool = False):
     """
@@ -361,6 +394,10 @@ def generate_question_tips_task(self, test_id: str, module: str, overwrite: bool
 
             db.commit()
 
+            # Pre-translate the (new or pre-existing) English tips to Bengali so
+            # the listening report's EN/BN toggle is served straight from the DB.
+            _translate_listening_tips(db, questions, overwrite)
+
         elif module == "reading":
             from app.models.reading import ReadingTest, ReadingPassage, ReadingQuestionGroup, ReadingQuestion
             from sqlalchemy import select
@@ -400,5 +437,22 @@ def generate_question_tips_task(self, test_id: str, module: str, overwrite: bool
     except Exception as exc:
         db.close()
         raise self.retry(exc=exc)
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True, max_retries=1, default_retry_delay=30)
+def translate_listening_tips_task(self, overwrite: bool = False):
+    """Backfill wrong_answer_tip_bn across ALL listening questions that already
+    have an English tip — a one-time translation of the pre-generated tips so the
+    report's EN/BN toggle has Bengali to show without any read-time LLM call."""
+    from app.models.listening import ListeningQuestion
+    from sqlalchemy import select
+
+    db = _get_db_session()
+    try:
+        questions = db.execute(select(ListeningQuestion)).scalars().all()
+        translated = _translate_listening_tips(db, questions, overwrite)
+        return {"translated": translated, "total": len(questions)}
     finally:
         db.close()

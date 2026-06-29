@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -285,6 +285,7 @@ async def get_attempts(
 @router.get("/attempts/{attempt_id}")
 async def get_attempt(
     attempt_id: str,
+    lang: str = Query("en"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -300,17 +301,29 @@ async def get_attempt(
     sc = attempt.subscores or {}
     is_pro = current_user.subscription == SubscriptionTier.pro
 
-    # Reload current tips from DB so upgrades and newly generated tips are reflected
+    # Pull each wrong question's pre-generated tip from the DB. wrong_answer_tip
+    # is English; wrong_answer_tip_bn is the pre-translated Bengali (served as-is,
+    # no read-time LLM). use_bn picks Bengali, falling back to English per tip.
+    use_bn = lang == "bn"
     stored_results = attempt.question_results or []
     wrong_qids = [int(qr["question_id"]) for qr in stored_results if not qr.get("is_correct") if qr.get("question_id")]
-    tip_map: dict[str, str] = {}
+    tip_map: dict[str, str] = {}      # display tip: BN if requested & available, else EN
+    bn_only_map: dict[str, str] = {}  # BN-only, used to build the Bengali overall list
     if wrong_qids:
         from app.models.listening import ListeningQuestion
         rows = (await db.execute(
-            select(ListeningQuestion.id, ListeningQuestion.wrong_answer_tip)
+            select(
+                ListeningQuestion.id,
+                ListeningQuestion.wrong_answer_tip,
+                ListeningQuestion.wrong_answer_tip_bn,
+            )
             .where(ListeningQuestion.id.in_(wrong_qids))
         )).all()
-        tip_map = {str(r.id): r.wrong_answer_tip for r in rows if r.wrong_answer_tip}
+        for r in rows:
+            if r.wrong_answer_tip:
+                tip_map[str(r.id)] = (r.wrong_answer_tip_bn or r.wrong_answer_tip) if use_bn else r.wrong_answer_tip
+            if r.wrong_answer_tip_bn:
+                bn_only_map[str(r.id)] = r.wrong_answer_tip_bn
 
     enriched_results = [
         {
@@ -321,7 +334,23 @@ async def get_attempt(
         for qr in stored_results
     ]
 
+    # Overall tips: the stored English list, or — when Bengali is requested — the
+    # per-question Bengali tips of the wrong questions (deduped, capped like
+    # generate_tips), falling back to English if none have been translated yet.
     tips = attempt.improvement_tips or []
+    if use_bn:
+        seen, bn_tips = set(), []
+        for qr in stored_results:
+            if qr.get("is_correct"):
+                continue
+            t = bn_only_map.get(str(qr.get("question_id")))
+            if t and t not in seen:
+                bn_tips.append(t)
+                seen.add(t)
+            if len(bn_tips) >= 4:
+                break
+        if bn_tips:
+            tips = bn_tips
 
     return {
         "attempt_id": str(attempt.id),
