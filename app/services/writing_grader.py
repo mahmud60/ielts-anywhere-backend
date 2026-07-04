@@ -72,7 +72,7 @@ Student response ({_count_words(task2_response)} words):
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=2500,
+        max_tokens=8192,  # two tasks + error arrays can exceed 2500 and truncate the JSON
         system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_message}],
     )

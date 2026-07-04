@@ -109,8 +109,13 @@ def _score_short_answer(key: Any, user: Any) -> bool:
         accepted_norm = _norm(str(accepted))
         if user_norm == accepted_norm:
             return True
+        # Subset match ONLY for multi-word keys. For a single-word key like
+        # "heat", subset matching accepts any answer that merely contains the
+        # word (e.g. "the heat wave was intense"). Requiring 2+ words keeps the
+        # intended "urban heat island" ⊆ "the urban heat island effect" leniency
+        # without the single-word false positives.
         accepted_words = set(accepted_norm.split())
-        if accepted_words and accepted_words.issubset(user_words):
+        if len(accepted_words) >= 2 and accepted_words.issubset(user_words):
             return True
 
     return False

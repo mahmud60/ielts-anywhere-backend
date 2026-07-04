@@ -293,6 +293,7 @@ async def submit_speaking(
     attempt = SpeakingAttempt(
         user_id=str(current_user.id),
         status="in_progress",
+        transcript=[m.model_dump() for m in body.transcript],  # persist up front so a failed grade keeps it
     )
     db.add(attempt)
     await db.flush()
@@ -301,7 +302,7 @@ async def submit_speaking(
         client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         msg = await client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=2000,
+            max_tokens=8192,  # a long transcript + error arrays can exceed 2000 and truncate the JSON
             system=_SCORE_SYSTEM,
             messages=[{
                 "role": "user",
@@ -309,29 +310,33 @@ async def submit_speaking(
             }],
         )
         result = _parse_claude_json(msg.content[0].text)
+
+        # Pull every score INSIDE the try: a malformed/truncated response (missing
+        # key, cut-off JSON) then fails the same way as an API error — the attempt
+        # is saved as 'failed' with the transcript intact, instead of an uncaught
+        # KeyError 500 that rolls the whole transaction (and the transcript) away.
+        attempt.overall_band = result["overall_band"]
+        attempt.fluency_coherence_band = result["fluency_coherence"]["band"]
+        attempt.fluency_coherence_feedback = result["fluency_coherence"]["feedback"]
+        attempt.lexical_resource_band = result["lexical_resource"]["band"]
+        attempt.lexical_resource_feedback = result["lexical_resource"]["feedback"]
+        attempt.grammatical_range_band = result["grammatical_range"]["band"]
+        attempt.grammatical_range_feedback = result["grammatical_range"]["feedback"]
+        attempt.pronunciation_band = result["pronunciation"]["band"]
+        attempt.pronunciation_feedback = result["pronunciation"]["feedback"]
+        attempt.errors = {
+            "fluency_coherence": result["fluency_coherence"].get("errors", []),
+            "lexical_resource": result["lexical_resource"].get("errors", []),
+            "grammatical_range": result["grammatical_range"].get("errors", []),
+            "pronunciation": result["pronunciation"].get("errors", []),
+        }
     except Exception as exc:
         attempt.status = "failed"
         await db.commit()
         raise HTTPException(500, f"Scoring failed: {exc}")
 
     attempt.status = "completed"
-    attempt.transcript = [m.model_dump() for m in body.transcript]
-    attempt.overall_band = result["overall_band"]
-    attempt.fluency_coherence_band = result["fluency_coherence"]["band"]
-    attempt.fluency_coherence_feedback = result["fluency_coherence"]["feedback"]
-    attempt.lexical_resource_band = result["lexical_resource"]["band"]
-    attempt.lexical_resource_feedback = result["lexical_resource"]["feedback"]
-    attempt.grammatical_range_band = result["grammatical_range"]["band"]
-    attempt.grammatical_range_feedback = result["grammatical_range"]["feedback"]
-    attempt.pronunciation_band = result["pronunciation"]["band"]
-    attempt.pronunciation_feedback = result["pronunciation"]["feedback"]
     attempt.examiner_summary = result.get("examiner_summary")
-    attempt.errors = {
-        "fluency_coherence": result["fluency_coherence"].get("errors", []),
-        "lexical_resource": result["lexical_resource"].get("errors", []),
-        "grammatical_range": result["grammatical_range"].get("errors", []),
-        "pronunciation": result["pronunciation"].get("errors", []),
-    }
     attempt.completed_at = datetime.now(timezone.utc)
 
     from app.services.ai_usage import add_usage, anthropic_tokens
