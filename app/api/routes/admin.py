@@ -289,6 +289,19 @@ async def get_user_analytics(
         .order_by(User.created_at.desc()).limit(15)
     )).all()
 
+    # Signup-cohort conversion: of users who joined each month, how many are Pro now.
+    # (We don't store a conversion timestamp, so this cohort view is the honest way
+    # to see whether newer signups convert better than older ones.)
+    month = func.date_trunc("month", User.created_at)
+    cohorts = (await db.execute(
+        select(
+            month,
+            func.count(User.id),
+            func.count(User.id).filter(User.subscription == SubscriptionTier.pro),
+        ).group_by(month).order_by(month)
+    )).all()
+    engaged = medium + high  # 3+ tests
+
     return {
         "total_users": total_users,
         "pro_users": pro_users,
@@ -316,6 +329,21 @@ async def get_user_analytics(
                 "last_active": la.isoformat() if la else None,
             }
             for em, fn, sub, ca, n, la in recent
+        ],
+        "funnel": [
+            {"stage": "Signed up", "count": total_users},
+            {"stage": "Activated · took a test", "count": activated},
+            {"stage": "Engaged · 3+ tests", "count": engaged},
+            {"stage": "Converted to Pro", "count": pro_users},
+        ],
+        "cohorts": [
+            {
+                "month": m.date().isoformat() if m else None,
+                "signups": int(tot),
+                "pro": int(p),
+                "conversion_pct": round(100 * int(p) / int(tot), 1) if tot else 0.0,
+            }
+            for m, tot, p in cohorts
         ],
     }
 
