@@ -222,6 +222,104 @@ async def get_test_analytics(
 
 # ── User management ───────────────────────────────────────────────────────────
 
+@router.get("/user-analytics")
+async def get_user_analytics(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """User growth + behaviour: signups over time, activation, engagement
+    segments, active users, Pro conversion, and recent signups with their
+    activity. 'Attempts' = listening/reading/writing/diagnostic (TestAttempt);
+    speaking is stored separately and not counted here."""
+    from datetime import datetime, timezone, timedelta
+    from app.models.test import TestAttempt
+
+    now = datetime.now(timezone.utc)
+    d7, d30 = now - timedelta(days=7), now - timedelta(days=30)
+
+    total_users = (await db.execute(select(func.count(User.id)))).scalar() or 0
+    pro_users = (await db.execute(
+        select(func.count(User.id)).where(User.subscription == SubscriptionTier.pro)
+    )).scalar() or 0
+    new_7d = (await db.execute(select(func.count(User.id)).where(User.created_at >= d7))).scalar() or 0
+    new_30d = (await db.execute(select(func.count(User.id)).where(User.created_at >= d30))).scalar() or 0
+
+    # New signups per day (last 30 days), chronological
+    day = func.date_trunc("day", User.created_at)
+    signups = (await db.execute(
+        select(day, func.count(User.id)).where(User.created_at >= d30)
+        .group_by(day).order_by(day)
+    )).all()
+
+    # Per-user attempt aggregate (count + last active)
+    per_user = (
+        select(
+            TestAttempt.user_id.label("uid"),
+            func.count(TestAttempt.id).label("n"),
+            func.max(TestAttempt.created_at).label("last"),
+        )
+        .group_by(TestAttempt.user_id)
+    ).subquery()
+
+    # Engagement segments + activation (users with >= 1 attempt)
+    seg = (await db.execute(
+        select(
+            func.count().filter(per_user.c.n.between(1, 2)),
+            func.count().filter(per_user.c.n.between(3, 5)),
+            func.count().filter(per_user.c.n >= 6),
+            func.count(per_user.c.uid),
+        ).select_from(per_user)
+    )).one()
+    low, medium, high, activated = int(seg[0]), int(seg[1]), int(seg[2]), int(seg[3])
+
+    active_7d = (await db.execute(
+        select(func.count(func.distinct(TestAttempt.user_id))).where(TestAttempt.created_at >= d7)
+    )).scalar() or 0
+    active_30d = (await db.execute(
+        select(func.count(func.distinct(TestAttempt.user_id))).where(TestAttempt.created_at >= d30)
+    )).scalar() or 0
+
+    # Recent signups with their activity
+    recent = (await db.execute(
+        select(
+            User.email, User.full_name, User.subscription, User.created_at,
+            func.coalesce(per_user.c.n, 0), per_user.c.last,
+        )
+        .outerjoin(per_user, per_user.c.uid == User.id)
+        .order_by(User.created_at.desc()).limit(15)
+    )).all()
+
+    return {
+        "total_users": total_users,
+        "pro_users": pro_users,
+        "free_users": total_users - pro_users,
+        "new_7d": new_7d,
+        "new_30d": new_30d,
+        "pro_conversion_pct": round(100 * pro_users / total_users, 1) if total_users else 0.0,
+        "active_7d": active_7d,
+        "active_30d": active_30d,
+        "activation_pct": round(100 * activated / total_users, 1) if total_users else 0.0,
+        "signups_by_day": [{"day": d.date().isoformat() if d else None, "count": int(n)} for d, n in signups],
+        "engagement": {
+            "none": total_users - activated,   # signed up, 0 attempts
+            "low": low,                        # 1-2 attempts
+            "medium": medium,                  # 3-5 attempts
+            "high": high,                      # 6+ attempts
+        },
+        "recent_signups": [
+            {
+                "email": em,
+                "full_name": fn,
+                "subscription": sub,
+                "created_at": ca.isoformat() if ca else None,
+                "attempts": int(n or 0),
+                "last_active": la.isoformat() if la else None,
+            }
+            for em, fn, sub, ca, n, la in recent
+        ],
+    }
+
+
 @router.get("/users")
 async def list_users(
     db: AsyncSession = Depends(get_db),
