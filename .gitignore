@@ -57,6 +57,12 @@ dist/
 *.log
 
 # =========================
+# 🌿 Celery (embedded beat schedule DB, worker pid/state)
+# =========================
+celerybeat-schedule*
+celerybeat.pid
+
+# =========================
 # 🧰 IDE / Editor
 # =========================
 .vscode/

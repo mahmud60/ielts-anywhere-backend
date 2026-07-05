@@ -48,3 +48,17 @@ def capture_exception(exc) -> None:
         sentry_sdk.capture_exception(exc)
     except Exception:
         pass
+
+
+def capture_message(message: str, level: str = "error") -> None:
+    """Explicitly report a message event (no-op if Sentry isn't initialized).
+    Used for conditions worth alerting on that aren't exceptions — e.g. the
+    watchdog having to fail out attempts that got stuck."""
+    if not _initialized:
+        return
+    try:
+        import sentry_sdk
+
+        sentry_sdk.capture_message(message, level=level)
+    except Exception:
+        pass

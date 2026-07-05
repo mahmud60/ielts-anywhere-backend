@@ -41,6 +41,16 @@ init_sentry()
 
 logger = logging.getLogger(__name__)
 
+# Watchdog schedule — fail out attempts stuck in a non-terminal state so no user
+# is left on a permanent "Grading…". Runs via the worker's embedded beat (the
+# deploy starts the worker with `-B`).
+celery_app.conf.beat_schedule = {
+    "sweep-stuck-attempts": {
+        "task": "app.tasks.grading.sweep_stuck_attempts",
+        "schedule": 900.0,  # every 15 minutes
+    },
+}
+
 
 def _get_db_session():
     """
@@ -457,5 +467,52 @@ def translate_listening_tips_task(self, overwrite: bool = False):
         questions = db.execute(select(ListeningQuestion)).scalars().all()
         translated = _translate_listening_tips(db, questions, overwrite)
         return {"translated": translated, "total": len(questions)}
+    finally:
+        db.close()
+
+
+@celery_app.task
+def sweep_stuck_attempts():
+    """Watchdog (beat, every 15 min): fail out attempts stuck in a non-terminal
+    state long past the point any grade could still be in flight, so no user is
+    left on a permanent "Grading…". Alerts (Sentry + log) whenever it has to act
+    — the signal that was missing when orphaned attempts piled up unnoticed."""
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import update
+    from app.models.test import TestAttempt, GradingStatus, ModuleType
+    from app.models.speaking_attempt import SpeakingAttempt
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+    db = _get_db_session()
+    try:
+        w = db.execute(
+            update(TestAttempt)
+            .where(
+                TestAttempt.module == ModuleType.writing,
+                TestAttempt.status.in_([GradingStatus.pending, GradingStatus.grading]),
+                TestAttempt.created_at < cutoff,
+            )
+            .values(status=GradingStatus.failed)
+        )
+        s = db.execute(
+            update(SpeakingAttempt)
+            .where(
+                SpeakingAttempt.status == "in_progress",
+                SpeakingAttempt.created_at < cutoff,
+            )
+            .values(status="failed")
+        )
+        db.commit()
+        wn, sn = (w.rowcount or 0), (s.rowcount or 0)
+        if wn or sn:
+            from app.core.sentry import capture_message
+            msg = f"Watchdog failed {wn} stuck writing + {sn} stuck speaking attempt(s) (>15m non-terminal)"
+            logger.warning(msg)
+            capture_message(msg, level="warning")
+        return {"writing": wn, "speaking": sn}
+    except Exception:
+        db.rollback()
+        logger.warning("sweep_stuck_attempts failed", exc_info=True)
+        raise
     finally:
         db.close()

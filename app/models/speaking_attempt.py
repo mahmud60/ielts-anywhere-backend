@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Text, Numeric, DateTime
+from sqlalchemy import Column, String, Text, Numeric, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.db.base import Base
 
@@ -24,3 +24,4 @@ class SpeakingAttempt(Base):
     errors = Column(JSONB)
     elevenlabs_session_id = Column(String)
     completed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
