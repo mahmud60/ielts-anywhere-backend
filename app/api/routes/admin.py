@@ -302,6 +302,41 @@ async def get_user_analytics(
     )).all()
     engaged = medium + high  # 3+ tests
 
+    # Per-module engagement: reach (distinct users) + attempts per module
+    mod_reach = (await db.execute(
+        select(TestAttempt.module, func.count(func.distinct(TestAttempt.user_id)), func.count(TestAttempt.id))
+        .group_by(TestAttempt.module)
+        .order_by(func.count(func.distinct(TestAttempt.user_id)).desc())
+    )).all()
+
+    # Which module each user tried FIRST — the entry point (DISTINCT ON earliest)
+    firsts = (
+        select(TestAttempt.user_id, TestAttempt.module)
+        .order_by(TestAttempt.user_id, TestAttempt.created_at.asc())
+        .distinct(TestAttempt.user_id)
+    ).subquery()
+    first_mod = (await db.execute(
+        select(firsts.c.module, func.count()).group_by(firsts.c.module).order_by(func.count().desc())
+    )).all()
+
+    # Retention: of activated users, how many came back (active on 2+ distinct days)
+    days_active = (
+        select(
+            TestAttempt.user_id.label("uid"),
+            func.count(func.distinct(func.date_trunc("day", TestAttempt.created_at))).label("d"),
+        ).group_by(TestAttempt.user_id)
+    ).subquery()
+    ret = (await db.execute(
+        select(
+            func.count().filter(days_active.c.d == 1),
+            func.count().filter(days_active.c.d >= 2),
+        ).select_from(days_active)
+    )).one()
+    one_and_done, returned = int(ret[0]), int(ret[1])
+
+    def _mod(m):
+        return m.value if hasattr(m, "value") else m
+
     return {
         "total_users": total_users,
         "pro_users": pro_users,
@@ -345,6 +380,19 @@ async def get_user_analytics(
             }
             for m, tot, p in cohorts
         ],
+        "module_reach": [
+            {"module": _mod(m), "users": int(u), "attempts": int(a)}
+            for m, u, a in mod_reach
+        ],
+        "first_module": [
+            {"module": _mod(m), "count": int(n)}
+            for m, n in first_mod
+        ],
+        "retention": {
+            "returned": returned,
+            "one_and_done": one_and_done,
+            "return_rate_pct": round(100 * returned / activated, 1) if activated else 0.0,
+        },
     }
 
 
