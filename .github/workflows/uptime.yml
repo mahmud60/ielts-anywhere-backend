@@ -1,0 +1,45 @@
+name: API uptime
+
+# External health probe for the production API.
+#
+# This runs on GitHub's infrastructure — deliberately OUTSIDE the GCP project —
+# so it still fires when the project itself is down (e.g. a billing lapse taking
+# Cloud Run offline with 503s). An in-project GCP uptime check would be suspended
+# by that same outage and could not warn us. A failed run notifies the repo owner
+# via GitHub's default Actions failure email.
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every ~10 minutes (GitHub best-effort scheduling)
+  workflow_dispatch: {}       # allow manual "run now" from the Actions tab
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check /health
+        env:
+          HEALTH_URL: https://fastapi-xbk5edja3a-uc.a.run.app/health
+        run: |
+          set -uo pipefail
+          # Retry so a single cold start or transient blip does not page us —
+          # only a sustained failure (all 5 attempts over ~75s) fails the job.
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -sS -o body.txt -w '%{http_code}' --max-time 15 "$HEALTH_URL" || echo 000)
+            body=$(cat body.txt 2>/dev/null || true)
+            echo "attempt $attempt: HTTP $code — ${body:-<no body>}"
+            if [ "$code" = "200" ] && printf '%s' "$body" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+              echo "API healthy."
+              exit 0
+            fi
+            [ "$attempt" -lt 5 ] && sleep 15
+          done
+          echo "::error::API health check FAILED after 5 attempts against ${HEALTH_URL}"
+          exit 1
