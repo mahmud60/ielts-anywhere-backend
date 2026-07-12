@@ -198,7 +198,7 @@ jobs:
             RUN_USER=$(whoami)
             CELERY_BIN=$(command -v celery)
             [ -n "$CELERY_BIN" ] || { echo "celery not found on PATH after pip install"; exit 1; }
-            printf '[Unit]\nDescription=IELTS Celery Worker (writing grading + feedback)\nAfter=network-online.target\nWants=network-online.target\nStartLimitIntervalSec=0\n\n[Service]\nType=simple\nUser=%s\nWorkingDirectory=/home/MAHMUD/ielts-anywhere-backend\nExecStart=%s -A app.tasks.grading.celery_app worker -B --loglevel=info --concurrency=2\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n' "$RUN_USER" "$CELERY_BIN" | sudo tee /etc/systemd/system/ielts-celery.service >/dev/null
+            printf '[Unit]\nDescription=IELTS Celery Worker (writing grading + feedback)\nAfter=network-online.target\nWants=network-online.target\nStartLimitIntervalSec=0\n\n[Service]\nType=simple\nUser=%s\nWorkingDirectory=/home/MAHMUD/ielts-anywhere-backend\nExecStart=%s -A app.tasks.grading.celery_app worker -B --loglevel=info --concurrency=2 --without-gossip --without-mingle --without-heartbeat\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n' "$RUN_USER" "$CELERY_BIN" | sudo tee /etc/systemd/system/ielts-celery.service >/dev/null
             echo "Installed ielts-celery unit (User=$RUN_USER ExecStart=$CELERY_BIN)"
             sudo systemctl daemon-reload
             sudo systemctl enable ielts-celery

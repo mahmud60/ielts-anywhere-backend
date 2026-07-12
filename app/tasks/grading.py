@@ -8,7 +8,8 @@ import ssl
 celery_app = Celery(
     "ielts_grader",
     broker=settings.REDIS_URL,
-    backend=settings.REDIS_URL,
+    # No result backend: nothing reads task results (grading writes to the DB and
+    # the frontend polls that), so storing them in Redis was wasted broker traffic.
 )
 
 _use_ssl = settings.REDIS_URL.startswith("rediss://")
@@ -20,13 +21,18 @@ _ssl_opts = {"ssl_cert_reqs": ssl.CERT_REQUIRED} if _use_ssl else {}
 celery_app.conf.update(
     worker_pool="solo" if platform.system() == "Windows" else "prefork",
     task_serializer="json",
-    result_serializer="json",
     accept_content=["json"],
     timezone="UTC",
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    # Nothing consumes task results, so don't store them — drops a Redis write
+    # per task plus the result-backend traffic.
+    task_ignore_result=True,
     broker_use_ssl=_ssl_opts,
-    redis_backend_use_ssl=_ssl_opts,
+    # Poll the broker every 10s instead of the 1s default. An idle worker was
+    # polling Redis ~2.6M times/month; grading is latency-tolerant and normal
+    # task pickup (blocking BRPOP) is unaffected.
+    broker_transport_options={"polling_interval": 10.0, "visibility_timeout": 3600},
     # Ride out a broker (Redis) outage instead of exiting: keep retrying the
     # connection forever, at startup and while running. Paired with the systemd
     # unit's Restart=always, a Redis blip can never silently kill the worker —
