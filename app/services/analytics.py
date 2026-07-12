@@ -48,3 +48,9 @@ def capture(distinct_id: str, event: str, properties: dict | None = None) -> Non
         client.capture(distinct_id=distinct_id, event=event, properties=properties or {})
     except Exception:
         logger.warning("PostHog capture failed for event '%s'", event, exc_info=True)
+
+
+def track_test_completed(distinct_id: str, module: str, band, **props) -> None:
+    """Emit the standard ``test_completed`` event with a consistent ``module`` +
+    ``band`` base. Callers pass any module-specific fields as keyword args."""
+    capture(distinct_id, "test_completed", {"module": module, "band": band, **props})

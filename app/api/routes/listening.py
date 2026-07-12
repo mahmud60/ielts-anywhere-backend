@@ -225,14 +225,11 @@ async def submit_listening(
     db.add(attempt)
     await db.flush()
 
-    analytics.capture(current_user.firebase_uid, "test_completed", {
-        "module": "listening",
-        "test_id": str(body.test_id),
-        "test_title": test.title,
-        "band": overall_band,
-        "correct": total_correct,
-        "total": total_questions,
-    })
+    analytics.track_test_completed(
+        current_user.firebase_uid, "listening", overall_band,
+        test_id=str(body.test_id), test_title=test.title,
+        correct=total_correct, total=total_questions,
+    )
 
     # No post-submission LLM call for listening. improvement_tips above already
     # come from generate_tips(), which uses each question's pre-generated

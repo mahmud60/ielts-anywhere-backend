@@ -344,14 +344,13 @@ async def submit_speaking(
     add_usage(db, module="speaking", model="claude-sonnet-4-6",
               input_tokens=_in_tok, output_tokens=_out_tok, user_id=current_user.id)
 
-    analytics.capture(current_user.firebase_uid, "test_completed", {
-        "module": "speaking",
-        "band": result["overall_band"],
-        "fluency_coherence": result["fluency_coherence"]["band"],
-        "lexical_resource": result["lexical_resource"]["band"],
-        "grammatical_range": result["grammatical_range"]["band"],
-        "pronunciation": result["pronunciation"]["band"],
-    })
+    analytics.track_test_completed(
+        current_user.firebase_uid, "speaking", result["overall_band"],
+        fluency_coherence=result["fluency_coherence"]["band"],
+        lexical_resource=result["lexical_resource"]["band"],
+        grammatical_range=result["grammatical_range"]["band"],
+        pronunciation=result["pronunciation"]["band"],
+    )
 
     # Link to test session if provided
     if body.test_session_id:
