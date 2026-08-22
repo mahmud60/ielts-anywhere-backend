@@ -26,7 +26,7 @@ jobs:
     steps:
       - name: Check /health
         env:
-          HEALTH_URL: https://fastapi-xbk5edja3a-uc.a.run.app/health
+          HEALTH_URL: https://fastapi-hs3omivhsa-uc.a.run.app/health
         run: |
           set -uo pipefail
           # Retry so a single cold start or transient blip does not page us —
