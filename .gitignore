@@ -43,6 +43,9 @@ htmlcov/
 db.sqlite3
 db.sqlite3-journal
 
+# Local one-off DB backups (contain user PII — never commit)
+_db_backup_*/
+
 # =========================
 # 📁 Build / Distribution
 # =========================
