@@ -4,8 +4,8 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.sentry import init_sentry, capture_exception
-from app.api.routes import auth, listening, reading, writing, speaking, sessions, admin, payments, dashboard, learn
-from app.api.routes import affiliates
+from app.api.routes import auth, listening, reading, writing, speaking, sessions, admin, dashboard, learn
+from app.api.routes import affiliates, public_config
 import asyncio
 import traceback
 from datetime import datetime, timezone, timedelta
@@ -68,10 +68,10 @@ app.include_router(writing.router)
 app.include_router(speaking.router)
 app.include_router(sessions.router)
 app.include_router(admin.router)
-app.include_router(payments.router)
 app.include_router(dashboard.router)
 app.include_router(learn.router)
 app.include_router(affiliates.router)
+app.include_router(public_config.router)
 
 @app.get("/health")
 async def health():

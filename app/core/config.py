@@ -25,10 +25,10 @@ class Settings(BaseSettings):
 
     FIREBASE_SERVICE_ACCOUNT_PATH: str = 'firebase-service-account.json'
 
-    # LemonSqueezy
-    LEMONSQUEEZY_API_KEY: str = ""
-    LEMONSQUEEZY_WEBHOOK_SECRET: str = ""
-    LEMONSQUEEZY_PRO_VARIANT_ID: str = ""   # the variant ID of your Pro plan
+    # Payments: no gateway is wired up. LemonSqueezy was removed pending a
+    # replacement — see app/api/routes/payments.py in git history for the
+    # checkout + webhook implementation, including the affiliate-commission
+    # and analytics-conversion logic that will need porting to the new gateway.
 
     # Cloudflare R2
     R2_ACCOUNT_ID: str = ""

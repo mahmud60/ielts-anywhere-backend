@@ -16,7 +16,9 @@ async def get_pricing(
     In a real system this would be stored in DB for live editing.
     """
     return {
-        "pro_variant_id": settings.LEMONSQUEEZY_PRO_VARIANT_ID,
+        # No payment gateway is wired up right now — LemonSqueezy was removed
+        # pending its replacement, so there is no variant/price ID to report.
+        "gateway": None,
         "currency": "USD",
         "plans": [
             {
@@ -41,7 +43,6 @@ async def get_pricing(
                     "Progress tracking",
                     "Improvement tips",
                 ],
-                "lemonsqueezy_variant_id": settings.LEMONSQUEEZY_PRO_VARIANT_ID,
             },
         ],
     }
