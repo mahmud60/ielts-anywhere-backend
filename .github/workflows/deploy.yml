@@ -120,6 +120,11 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Deploy to Cloud Run
+        # NOTE ON --set-env-vars: it is a COMMA-separated list, so no value here
+        # may contain a comma or gcloud will read it as another variable. That is
+        # why ALLOWED_ORIGINS is deliberately NOT passed: it is a comma-separated
+        # list by nature, and passing it here would corrupt the whole flag. The
+        # app falls back to the default list in app/core/config.py instead.
         run: |
           gcloud run deploy fastapi \
             --image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/ielts-images/fastapi:${{ needs.build-api.outputs.image_tag }} \
@@ -132,7 +137,7 @@ jobs:
             --cpu=1 \
             --concurrency=80 \
             --timeout=60 \
-            --set-env-vars=DATABASE_URL=${{ secrets.DATABASE_URL }},ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},REDIS_URL=${{ secrets.REDIS_URL }},R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }},R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }},R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }},R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }},R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }},FIREBASE_SERVICE_ACCOUNT_B64=${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }},ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }},LIVEKIT_API_KEY=${{ secrets.LIVEKIT_API_KEY }},LIVEKIT_API_SECRET=${{ secrets.LIVEKIT_API_SECRET }},LIVEKIT_URL=${{ secrets.LIVEKIT_URL }},LISTENING_TIME_LIMIT=1800,READING_TIME_LIMIT=3600,WRITING_TIME_LIMIT=3600,SPEAKING_TIME_LIMIT=900,DEBUG=False,POSTHOG_API_KEY=${{ secrets.POSTHOG_API_KEY }},SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+            --set-env-vars=DATABASE_URL=${{ secrets.DATABASE_URL }},ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},REDIS_URL=${{ secrets.REDIS_URL }},R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }},R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }},R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }},R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }},R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }},FIREBASE_SERVICE_ACCOUNT_B64=${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }},LIVEKIT_API_KEY=${{ secrets.LIVEKIT_API_KEY }},LIVEKIT_API_SECRET=${{ secrets.LIVEKIT_API_SECRET }},LIVEKIT_URL=${{ secrets.LIVEKIT_URL }},LISTENING_TIME_LIMIT=1800,READING_TIME_LIMIT=3600,WRITING_TIME_LIMIT=3600,SPEAKING_TIME_LIMIT=900,DEBUG=False,POSTHOG_API_KEY=${{ secrets.POSTHOG_API_KEY }},SENTRY_DSN=${{ secrets.SENTRY_DSN }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},LEMONSQUEEZY_API_KEY=${{ secrets.LEMONSQUEEZY_API_KEY }},LEMONSQUEEZY_WEBHOOK_SECRET=${{ secrets.LEMONSQUEEZY_WEBHOOK_SECRET }},LEMONSQUEEZY_PRO_VARIANT_ID=${{ secrets.LEMONSQUEEZY_PRO_VARIANT_ID }} \
             --quiet
 
       - name: Print FastAPI URL
